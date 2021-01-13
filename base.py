@@ -193,18 +193,19 @@ if __name__ == '__main__':
     args = parser.parse_args()
     np.set_printoptions(precision=2, suppress=True)
 
-    #data = read_data()
-    #data = data.subset(data.idx(['TP53(M)', 'MDM2(A)', 'CDKN2A(D)', 'CDK4(A)', 'NF1(M)', 'IDH1(M)', 'PTEN(M)']))
+    data = read_data()
+    data = data.subset(data.idx(['TP53(M)', 'MDM2(A)', 'CDKN2A(D)', 'CDK4(A)', 'NF1(M)', 'IDH1(M)', 'PTEN(M)']))
     #data = data.subset(data.idx(['PDGFRA(A)', 'CDK4(A)']))
     #data = data.subset(data.idx(['TP53(M)', 'IDH1(M)']))
 
-    data = Lambda_struct()
+    #data = Lambda_struct()
     #util.plot_perm_group(data, range(2), dlen=len(data),
     #                     niter=10000, axes_fontsize=9, title='', perm=True)
     #plt.show()
     n = data.nitems
     pdata = get_pdata(data)
     fopt = lambda x, g: loglik(x, g, pdata)
+    np.random.seed(42)
     x0 = np.random.uniform(-5, 5, (n, n))
     #x0 = np.ones((n, n))
 
@@ -224,7 +225,7 @@ if __name__ == '__main__':
     print(sol)
     print('exp(sol) =')
     print(np.exp(sol))
-    sample_stat(sol, 10000, seq=False)
+    #sample_stat(sol, 10000, seq=False)
 
     #print('-'*50)
 

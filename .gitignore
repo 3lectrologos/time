@@ -1,0 +1,7 @@
+*~
+__pycache__/
+/cpp/eigen
+/cpp/pybind11
+/*/CMakeCache.txt
+/*/CMakeFiles/
+/*/Makefile

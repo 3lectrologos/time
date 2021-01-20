@@ -72,17 +72,20 @@ double loglik_seq_nograd(Eigen::MatrixXd theta, const seq_t& seq) {
       }
     }
 
-    seq_t sumth(rest.size());
-    int r = 0;
-    for (auto j : rest) {
-      sumth[r] = theta(j, j);
-      for (auto s=0; s < k; s++) {
-        sumth[r] += theta(seq[s], j);
+    if (rest.size() > 0) {
+      seq_t sumth(rest.size());
+      int r = 0;
+      for (auto j : rest) {
+        sumth[r] = theta(j, j);
+        for (auto s=0; s < k; s++) {
+          sumth[r] += theta(seq[s], j);
+        }
+        r++;
       }
-      r++;
+      double lse = logaddexp(0, logsumexp(sumth));
+      lik -= lse;
     }
-    double lse = logaddexp(0, logsumexp(sumth));
-    lik -= lse;
+
     if (k < seq.size()) {
       auto it = std::find(rest.begin(), rest.end(), seq[k]);
       rest.erase(it);
@@ -112,25 +115,29 @@ std::pair<double, Eigen::MatrixXd> loglik_seq(Eigen::MatrixXd theta, const seq_t
       }
     }
 
-    seq_t sumth(rest.size());
-    int r = 0;
-    for (auto j : rest) {
-      sumth[r] = theta(j, j);
-      for (auto s=0; s < k; s++) {
-        sumth[r] += theta(seq[s], j);
+    if (rest.size() > 0) {
+      seq_t sumth(rest.size());
+      int r = 0;
+      for (auto j : rest) {
+        sumth[r] = theta(j, j);
+        for (auto s=0; s < k; s++) {
+          sumth[r] += theta(seq[s], j);
+        }
+        r++;
       }
-      r++;
-    }
-    double lse = logaddexp(0, logsumexp(sumth));
-    lik -= lse;
-    r = 0;
-    for (auto j : rest) {
-      grad(j, j) -= exp(sumth[r] - lse);
-      for (auto s=0; s < k; s++) {
-        grad(seq[s], j) -= exp(sumth[r] - lse);
+
+      double lse = logaddexp(0, logsumexp(sumth));
+      lik -= lse;
+      r = 0;
+      for (auto j : rest) {
+        grad(j, j) -= exp(sumth[r] - lse);
+        for (auto s=0; s < k; s++) {
+          grad(seq[s], j) -= exp(sumth[r] - lse);
+        }
+        r++;
       }
-      r++;
     }
+    
     if (k < seq.size()) {
       auto it = std::find(rest.begin(), rest.end(), seq[k]);
       rest.erase(it);
@@ -138,6 +145,17 @@ std::pair<double, Eigen::MatrixXd> loglik_seq(Eigen::MatrixXd theta, const seq_t
   }
 
   return std::make_pair(lik, grad);
+}
+
+
+std::vector<seq_t> all_perms(const seq_t& set) {
+  std::vector<seq_t> result;
+  seq_t sorted = seq_t(set);
+  std::sort(sorted.begin(), sorted.end());
+  do {
+    result.push_back(sorted);
+  } while(std::next_permutation(sorted.begin(), sorted.end()));
+  return result;
 }
 
 
@@ -162,27 +180,38 @@ std::vector<seq_t> sample_perms(Eigen::MatrixXd theta, const seq_t& set, int npe
 }
 
 
-std::pair<double, Eigen::MatrixXd> loglik_set(
-      Eigen::MatrixXd theta, const seq_t& set, int nperms) {
+std::pair<double, Eigen::MatrixXd> loglik_set_aux(
+    Eigen::MatrixXd theta, const seq_t& set, std::vector<seq_t> perms) {
   auto n = theta.rows();
-  std::vector<double> liks(nperms);
-  std::vector<Eigen::MatrixXd> grads(nperms);
+  std::vector<double> liks(perms.size());
+  std::vector<Eigen::MatrixXd> grads(perms.size());
 
-  auto perms = sample_perms(theta, set, nperms);
-  for (auto i=0; i < nperms; i++) {
-    //print_seq(perms[i]);
+  for (auto i=0; i < perms.size(); i++) {
     auto res = loglik_seq(theta, perms[i]);
     liks[i] = res.first;
     grads[i] = res.second;
   }
-
+  
   double lse = logsumexp(liks);
+
   Eigen::MatrixXd grad = Eigen::MatrixXd::Zero(n, n);
-  for (auto i=0; i < nperms; i++) {
+  for (auto i=0; i < perms.size(); i++) {
     grad += exp(liks[i] - lse) * grads[i];
   }
 
   return std::make_pair(lse, grad);
+}
+
+
+std::pair<double, Eigen::MatrixXd> loglik_set_full(Eigen::MatrixXd theta, const seq_t& set) {
+  auto perms = all_perms(set);
+  return loglik_set_aux(theta, set, perms);
+}
+
+
+std::pair<double, Eigen::MatrixXd> loglik_set(Eigen::MatrixXd theta, const seq_t& set, int nperms) {
+  auto perms = sample_perms(theta, set, nperms);
+  return loglik_set_aux(theta, set, perms);
 }
 
 
@@ -202,6 +231,7 @@ Eigen::MatrixXd loglik_data(const Eigen::MatrixXd theta, const std::vector<seq_t
 PYBIND11_MODULE(diff, m) {
   m.def("loglik_seq", &loglik_seq, py::return_value_policy::reference_internal);
   m.def("loglik_set", &loglik_set, py::return_value_policy::reference_internal);
+  m.def("loglik_set_full", &loglik_set_full, py::return_value_policy::reference_internal);
   m.def("loglik_data", &loglik_data, py::return_value_policy::reference_internal);
 }
 

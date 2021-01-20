@@ -4,12 +4,12 @@ import itertools
 import argparse
 import scipy.special
 import lbfgs
-import simplex_projection
 import base
 import util
-import datasets
-from datasets import Data
 from cpp import diff
+
+import jax.numpy as jnp
+import jax.scipy.special as jsp
 
 
 def q(th, s, a):
@@ -88,6 +88,8 @@ def loglik_set_new(th, x):
     res = [loglik_seq_new(th, xperm)
            for xperm in itertools.permutations(x)]
     liks, grds = zip(*res)
+
+    print(liks[:10])
                      
     lse = scipy.special.logsumexp(liks)
     liks = np.asarray(liks)
@@ -149,95 +151,34 @@ def learn():
 
 def test3():
     n = 7
-    np.random.seed(42)
+    np.random.seed(41)
     theta = np.random.uniform(-5, 5, (n, n))
-    seq = [2, 0, 1, 5]
+    seq = [2, 4, 5, 3, 0, 1, 6]
+    #seq = [2, 0, 1, 5]
 
-    print('theta =\n', theta)
-    print()
+    #print('theta =\n', theta)
+    #print()
 
     res, grad = loglik_set_new(theta, seq)
     print('true =', res)
     print('grad =\n', grad)
     print('=======================')
     print()
+
+    from datasets import Data
+    data = Data.from_list([[seq]], nitems=n)
+    grad = np.zeros(n*n)
+    res = base.loglik(base.mat2vec(theta), grad, base.get_pdata(data))
+    grad = base.vec2mat(grad, n)
+    print('true =', res)
+    print('grad =\n', grad)
+    print('=======================')
+    print()
     
-    res, grad = diff.loglik_set(theta, seq, 100)
+    res, grad = diff.loglik_set(theta, seq, 1000)
     print('approx =', res)
     print('grad =\n', grad)
 
 
-def plot_mat(theta, ax, labels):
-    util.plot_matrix(np.exp(theta), ax, xlabels=labels, ylabels=labels,
-                     vmin=0, vmid=1, vmax=20, cmap='PuOr_r')
-    plt.pause(0.001)
-
-
-class Optimizer:
-    GAMMA = 0.9
-    def __init__(self, grad):
-        self.grad = grad
-
-    def run(self, data, niter, xinit, step=0.05, reg=50, show=False):
-        if show:
-            fig, ax = plt.subplots(1, 1, figsize=(11, 11))
-            fig.tight_layout()
-            plt.gcf().show()
-        
-        n = xinit.shape[0]
-        mom = np.zeros_like(xinit)
-        xsol = np.copy(xinit)
-        for it in range(niter):
-            xsol += self.GAMMA*mom
-            g = self.grad(xsol, data)
-            #
-            lik = loglik_new(base.mat2vec(xsol), None, data)
-            print(lik)
-            #
-            xsol += step*g
-            mom = self.GAMMA*mom + step*g
-            # L1-projection
-            xvec = base.mat2vec(xsol)
-            xvec[n+1:] = simplex_projection.euclidean_proj_l1ball(xvec[n+1:], reg)
-            xsol = base.vec2mat(xvec, n)
-            if show and it % 100 == 0:
-                ax.clear()
-                plot_mat(xsol, ax, labels=data.labels)
-        if show:
-            plt.show()
-        return xsol
-
-
-def learn_toy():
-    #data = [[]]*1 + [[0]]*2 + [[0, 1]]*4 + [[0, 2]]*3
-    #n = 3
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--show', action='store_true')
-    args = parser.parse_args()
-
-    data = base.read_data()
-    labels = ['TP53(M)', 'MDM2(A)', 'MDM4(A)', 'CDKN2A(D)', 'CDK4(A)',
-              'NF1(M)', 'IDH1(M)', 'PTEN(M)', 'PTEN(D)', 'EGFR(M)',
-              'RB1(D)', 'PDGFRA(A)', 'FAF1(D)', 'SPTA1(M)', 'PIK3CA(M)',
-              'OBSCN(M)', 'CNTNAP2(M)', 'PAOX(M)', 'TP53(D)', 'LRP2(M)']
-     
-    data = data.subset(data.idx(labels))
-
-    #data = datasets.comet('gbm')
-    #cutoff = 0.04
-    #keep = []
-    #for idx in range(data.nitems):
-    #    if data.marginals[idx] > cutoff:
-    #        keep.append(idx)
-    #data = data.subset(keep)
-    #print(data)
-
-    opt = Optimizer(lambda t, x: diff.loglik_data(t, x, 200))
-    theta = np.random.uniform(0, 0, (data.nitems, data.nitems))
-    theta = opt.run(data, niter=500, xinit=theta, show=args.show)
-    print('theta =\n', theta)
-    #base.sample_stat(theta, 10000, seq=False)
-
-
 if __name__ == '__main__':
-    learn_toy()
+    test3()

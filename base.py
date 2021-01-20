@@ -129,72 +129,15 @@ def sample_stat(x, nsamples, seq=False):
         print(key, ':', counter[key])
 
 
-def example_two_genes(x0=None):
-    if x0 is None:
-        x0 = np.array([[1, 1], [1, 1]])
-    data = [[]]*50 + [[0]]*40 + [[1]]*2 + [[0, 1]]*8
-    data = Data.from_list([data], nitems=2)
-    pdata = get_pdata(data)
-    fopt = lambda x, g: loglik(x, g, pdata)
-    sol = lbfgs.fmin_lbfgs(fopt, x0=x0, epsilon=1e-10,
-                           orthantwise_c=0.005, line_search='wolfe')
-    lik = loglik(sol, None, pdata)
-    print('loglik =', lik)
-    return sol
-
-
-def two_genes_reps():
-    nreps = 10
-    for i in range(nreps):
-        x0 = np.random.uniform(-5, 5, (2, 2))
-        sol = example_two_genes(x0)
-        print('exp(sol) =')
-        print(np.exp(sol))
-        print('-'*50)
-
-
-def read_data():
-    df = pd.read_csv('gbm.csv')
-    mat = df.to_numpy().T
-    labels = [col for col in df.columns]
-    return Data([mat], labels=labels)
-
-
-def Lambda_struct():
-    lst = [[]]*1 + [[0]]*2 + [[0, 1]]*4 + [[0, 2]]*3
-    data = Data.from_list([lst], nitems=3)
-    return data
-
-
-def V_struct():
-    lst = [[]]*20 + [[0]]*10 + [[1]]*10 + [[0, 1]]*5 + [[0, 2]]*15 + [[1, 2]]*15 + [[0, 1, 2]]*3
-    data = Data.from_list([lst], nitems=3)
-    return data
-
-
-def three():
-    foo = np.array([
-        [1, 2, 2],
-        [1, 1, -10],
-        [1, -10, 1]
-        ])
-    #foo = np.random.uniform(-5, 5, (3, 3))
-    print(foo)
-    sample_stat(foo, 10000)
-    print('-'*50)
-    lst = [list(a) for a in get_samples(foo, 100)]
-    data = Data.from_list([lst], nitems=3)
-    return data    
-
-
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--reg', action='store_true')
     args = parser.parse_args()
     np.set_printoptions(precision=2, suppress=True)
 
-    data = read_data()
-    data = data.subset(data.idx(['TP53(M)', 'MDM2(A)', 'CDKN2A(D)', 'CDK4(A)', 'NF1(M)', 'IDH1(M)', 'PTEN(M)']))
+    data = datasets.hazard()
+    data = data.subset(data.idx(
+        ['TP53(M)', 'MDM2(A)', 'CDKN2A(D)', 'CDK4(A)', 'NF1(M)', 'IDH1(M)', 'PTEN(M)']))
     #data = data.subset(data.idx(['PDGFRA(A)', 'CDK4(A)']))
     #data = data.subset(data.idx(['TP53(M)', 'IDH1(M)']))
 

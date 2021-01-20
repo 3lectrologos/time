@@ -1,10 +1,11 @@
 #include <iostream>
 #include <algorithm>
+#include <numeric>
 #include <cmath>
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
-#include <pybind11/numpy.h>
 #include <pybind11/eigen.h>
+#include <omp.h>
 #include "eigen/Eigen/Dense"
 
 
@@ -15,57 +16,11 @@ typedef std::vector<std::vector<double>> mat_t;
 typedef std::vector<double> seq_t;
 
 
-template <typename T> class Nparr {
-public:
-  Nparr(py::array_t<T>& array) : buf(array.request()) {
-    data_ = (T*) buf.ptr;
-    shape = buf.shape;
+void print_seq(const seq_t& seq) {
+  for (auto s : seq) {
+    std::cout << s << " ";
   }
-  
-  size_t index(size_t i, size_t j) const {
-    return (i * buf.strides[0] + j * buf.strides[1]) / buf.itemsize;
-  }
-  
-  T operator ()(const size_t i, const size_t j) const {
-    return data_[index(i, j)];
-  }
-  
-  T& operator ()(size_t i, size_t j) {
-    return data_[index(i, j)];
-  }
-  
-  size_t index(size_t i) const {
-    return (i * buf.strides[0]) / buf.itemsize;
-  }
-  
-  T operator ()(size_t i) const {
-    return data_[index(i)];
-  }
-  
-  T& operator ()(size_t i) {
-    return data_[index(i)];
-  }
-  
-public:
-  py::buffer_info buf;
-  
-public:
-  T* data_;
-  std::vector<long int> shape;
-};
-
-
-template <typename T> py::array_t<T> npmat(const size_t nrows, const size_t ncols) {
-  auto result = py::array(py::buffer_info(
-    nullptr,                            // Pointer to data (nullptr -> ask NumPy to allocate!)
-    sizeof(T),                          // Size of one item
-    py::format_descriptor<T>::format(), // Buffer format
-    2,                                  // How many dimensions?
-    { nrows, ncols },                   // Number of elements for each dimension
-    { sizeof(T), nrows * sizeof(T) }    // Strides for each dimension
-  ));
-  
-  return result;
+  std::cout << std::endl;
 }
 
 
@@ -101,51 +56,84 @@ double logsumexp(const std::vector<double>& a) {
 }
 
 
-std::pair<double, Eigen::MatrixXd> loglik_seq(py::array_t<double> theta, const seq_t& seq) {
-  Nparr<double> th(theta);
-  int n = th.shape[0];
-  seq_t ground(n);
-  std::iota(ground.begin(), ground.end(), 0);
+double loglik_seq_nograd(Eigen::MatrixXd theta, const seq_t& seq) {
+  int n = theta.rows();
+  std::list<int> rest;
+  for (auto i=0; i < n; i++) rest.push_back(i);
+
+  double lik = 0;
+  for (auto k=0; k < seq.size()+1; k++) {
+    if (k < seq.size()) {
+      int i = seq[k];
+      lik += theta(i, i);
+      for(auto r=k+1; r < seq.size(); r++) {
+        int j = seq[r];
+        lik += theta(i, j);
+      }
+    }
+
+    seq_t sumth(rest.size());
+    int r = 0;
+    for (auto j : rest) {
+      sumth[r] = theta(j, j);
+      for (auto s=0; s < k; s++) {
+        sumth[r] += theta(seq[s], j);
+      }
+      r++;
+    }
+    double lse = logaddexp(0, logsumexp(sumth));
+    lik -= lse;
+    if (k < seq.size()) {
+      auto it = std::find(rest.begin(), rest.end(), seq[k]);
+      rest.erase(it);
+    }
+  }
+
+  return lik;
+}
+
+
+std::pair<double, Eigen::MatrixXd> loglik_seq(Eigen::MatrixXd theta, const seq_t& seq) {
+  int n = theta.rows();
+  std::list<int> rest;
+  for (auto i=0; i < n; i++) rest.push_back(i);
   Eigen::MatrixXd grad = Eigen::MatrixXd::Zero(n, n);
 
   double lik = 0;
   for (auto k=0; k < seq.size()+1; k++) {
     if (k < seq.size()) {
       int i = seq[k];
-      lik += th(i, i);
+      lik += theta(i, i);
       grad(i, i) += 1;
       for(auto r=k+1; r < seq.size(); r++) {
         int j = seq[r];
-        lik += th(i, j);
+        lik += theta(i, j);
         grad(i, j) += 1;
       }
     }
 
-    seq_t rest;
-    seq_t sortedseq(seq.begin(), seq.begin()+k);
-    std::sort(sortedseq.begin(), sortedseq.end());
-    std::set_difference(ground.begin(), ground.end(),
-                        sortedseq.begin(), sortedseq.end(),
-                        std::inserter(rest, rest.begin()));
-
     seq_t sumth(rest.size());
-    for (auto r=0; r < rest.size(); r++) {
-      auto j = rest[r];
-      sumth[r] = th(j, j);
+    int r = 0;
+    for (auto j : rest) {
+      sumth[r] = theta(j, j);
       for (auto s=0; s < k; s++) {
-        auto i = seq[s];
-        sumth[r] += th(i, j);
+        sumth[r] += theta(seq[s], j);
       }
+      r++;
     }
     double lse = logaddexp(0, logsumexp(sumth));
     lik -= lse;
-    for (auto r=0; r < rest.size(); r++) {
-      auto j = rest[r];
+    r = 0;
+    for (auto j : rest) {
       grad(j, j) -= exp(sumth[r] - lse);
       for (auto s=0; s < k; s++) {
-        auto i = seq[s];
-        grad(i, j) -= exp(sumth[r] - lse);
+        grad(seq[s], j) -= exp(sumth[r] - lse);
       }
+      r++;
+    }
+    if (k < seq.size()) {
+      auto it = std::find(rest.begin(), rest.end(), seq[k]);
+      rest.erase(it);
     }
   }
 
@@ -153,30 +141,44 @@ std::pair<double, Eigen::MatrixXd> loglik_seq(py::array_t<double> theta, const s
 }
 
 
-std::pair<double, Eigen::MatrixXd> loglik_set(py::array_t<double> theta, const seq_t& seq) {
-  Nparr<double> th(theta);
-  int n = th.shape[0];
-  long nperm = 1;
-  for (auto i = 2; i < seq.size()+1; i++) {
-    nperm *= i;
+std::vector<seq_t> sample_perms(Eigen::MatrixXd theta, const seq_t& set, int nperms) {
+  int burnin = nperms;
+  std::vector<seq_t> result;
+  seq_t cur(set);
+  auto pcur = loglik_seq_nograd(theta, cur);
+  for(auto i=0; i < burnin+nperms; i++) {
+    seq_t next(cur);
+    std::random_shuffle(next.begin(), next.end());
+    auto pnext = loglik_seq_nograd(theta, next);
+    auto paccept = std::min(1.0, pnext/pcur);
+    if ((double) rand() / (RAND_MAX) > paccept) {
+      pcur = pnext;
+    }
+    if (i >= burnin) {
+      result.push_back(next);
+    }
   }
-  
-  std::vector<double> liks(nperm);
-  std::vector<Eigen::MatrixXd> grads(nperm);
+  return result;
+}
 
-  seq_t pseq(seq);
-  std::sort(pseq.begin(), pseq.end());
-  unsigned int i = 0;
-  do {
-    auto res = loglik_seq(theta, pseq);
+
+std::pair<double, Eigen::MatrixXd> loglik_set(
+      Eigen::MatrixXd theta, const seq_t& set, int nperms) {
+  auto n = theta.rows();
+  std::vector<double> liks(nperms);
+  std::vector<Eigen::MatrixXd> grads(nperms);
+
+  auto perms = sample_perms(theta, set, nperms);
+  for (auto i=0; i < nperms; i++) {
+    //print_seq(perms[i]);
+    auto res = loglik_seq(theta, perms[i]);
     liks[i] = res.first;
     grads[i] = res.second;
-    i++;
-  } while (std::next_permutation(pseq.begin(), pseq.end()));
+  }
 
   double lse = logsumexp(liks);
   Eigen::MatrixXd grad = Eigen::MatrixXd::Zero(n, n);
-  for (auto i=0; i < nperm; i++) {
+  for (auto i=0; i < nperms; i++) {
     grad += exp(liks[i] - lse) * grads[i];
   }
 
@@ -184,7 +186,35 @@ std::pair<double, Eigen::MatrixXd> loglik_set(py::array_t<double> theta, const s
 }
 
 
+Eigen::MatrixXd loglik_data(const Eigen::MatrixXd theta, const std::vector<seq_t> data, int nperms) {
+  auto n = theta.rows();
+  Eigen::MatrixXd grad = Eigen::MatrixXd::Zero(n, n);
+#pragma omp parallel for
+  for (auto i=0; i < data.size(); i++) {
+    grad += loglik_set(theta, data[i], nperms).second;
+  }
+  grad /= data.size();
+  return grad;
+}
+
+
+
 PYBIND11_MODULE(diff, m) {
   m.def("loglik_seq", &loglik_seq, py::return_value_policy::reference_internal);
   m.def("loglik_set", &loglik_set, py::return_value_policy::reference_internal);
+  m.def("loglik_data", &loglik_data, py::return_value_policy::reference_internal);
+}
+
+
+int main() {
+  int n = 20;
+  Eigen::MatrixXd theta = Eigen::MatrixXd::Zero(n, n);
+  seq_t set = {2, 0, 1, 3, 5, 8};
+  double step = 0.01;
+
+  for (auto i=0; i < 100; i++) {
+    auto res = loglik_set(theta, set, 100);
+    theta += step*res.second;
+    std::cout << res.first << std::endl;
+  }
 }

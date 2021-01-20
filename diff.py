@@ -1,11 +1,13 @@
 import numpy as np
+import matplotlib.pylab as plt
 import itertools
+import argparse
 import scipy.special
-import jax.numpy as jnp
-import jax.scipy.special as jsp
-import jax
 import lbfgs
+import simplex_projection
 import base
+import util
+import datasets
 from datasets import Data
 from cpp import diff
 
@@ -96,13 +98,13 @@ def loglik_set_new(th, x):
     return lse, grd
 
 
-def loglik_new(thvec, gout, data):
+def loglik_new(thvec, gout, data, nperm=20):
     n = int(np.sqrt(thvec.shape[0]))
     th = base.vec2mat(thvec, n)
     val = 0
     grd = np.zeros((n, n))
     for d in data:
-        v, g = diff.loglik_set(th, d)
+        v, g = diff.loglik_set(th, d, nperm)
         val += v
         grd += g
     grd = base.mat2vec(grd)
@@ -113,7 +115,6 @@ def loglik_new(thvec, gout, data):
 
 
 def learn():
-    #gfun = jax.value_and_grad(loglik_set, argnums=0)
     #n = 3
     #data = [[]]*1 + [[0]]*2 + [[0, 1]]*4 + [[0, 2]]*3
     
@@ -143,57 +144,14 @@ def learn():
     print(sol)
     #print('exp(sol) =')
     #print(np.exp(sol))
-    #base.sample_stat(sol, 10000, seq=False)
-
-
-def test():
-    n = 4
-    data = [[0], [2, 3, 1], [3, 0]]
-    gfun = jax.value_and_grad(loglik_set, argnums=0)
-    theta = np.random.uniform(-5, 5, (n, n))
-
-    g = np.ones(n*n)
-    val = loglik(base.mat2vec(theta), g, data, gfun)
-    print('val =', val)
-    print('grd =')
-    print(base.vec2mat(g, n))
-
-    data = Data.from_list([data], nitems=n)
-    pdata = base.get_pdata(data)
-    g = np.ones(n*n)
-    val = base.loglik(base.mat2vec(theta), g, pdata)
-    print('val =', val)
-    print('grd =')
-    print(base.vec2mat(g, n))
-
-    g = np.ones(n*n)
-    val = loglik_new(base.mat2vec(theta), g, data)
-    print('val =', val)
-    print('grd =')
-    print(base.vec2mat(g, n))
-
-
-def test2():
-    n = 4
-    seq = [1, 3, 0]
-    
-    gfun = jax.value_and_grad(loglik_set, argnums=0)
-    theta = np.random.uniform(-5, 5, (n, n))
-    print('theta =\n', theta)
-    
-    val, grd = gfun(theta, seq)
-    print('val =', val)
-    print('grd =\n', grd)
-
-    val, grd = loglik_set_new(theta, seq)
-    print('val =', val)
-    print('grd =\n', grd)
+    #base.sample_stat(sol, 10000, seq=False)    
 
 
 def test3():
-    n = 3
+    n = 7
+    np.random.seed(42)
     theta = np.random.uniform(-5, 5, (n, n))
-    seq = [2, 0]
+    seq = [2, 0, 1, 5]
 
     print('theta =\n', theta)
     print()
@@ -204,10 +162,82 @@ def test3():
     print('=======================')
     print()
     
-    res, grad = diff.loglik_set(theta, seq)
-    print('true =', res)
+    res, grad = diff.loglik_set(theta, seq, 100)
+    print('approx =', res)
     print('grad =\n', grad)
 
-    
+
+def plot_mat(theta, ax, labels):
+    util.plot_matrix(np.exp(theta), ax, xlabels=labels, ylabels=labels,
+                     vmin=0, vmid=1, vmax=20, cmap='PuOr_r')
+    plt.pause(0.001)
+
+
+class Optimizer:
+    GAMMA = 0.9
+    def __init__(self, grad):
+        self.grad = grad
+
+    def run(self, data, niter, xinit, step=0.05, reg=50, show=False):
+        if show:
+            fig, ax = plt.subplots(1, 1, figsize=(11, 11))
+            fig.tight_layout()
+            plt.gcf().show()
+        
+        n = xinit.shape[0]
+        mom = np.zeros_like(xinit)
+        xsol = np.copy(xinit)
+        for it in range(niter):
+            xsol += self.GAMMA*mom
+            g = self.grad(xsol, data)
+            #
+            lik = loglik_new(base.mat2vec(xsol), None, data)
+            print(lik)
+            #
+            xsol += step*g
+            mom = self.GAMMA*mom + step*g
+            # L1-projection
+            xvec = base.mat2vec(xsol)
+            xvec[n+1:] = simplex_projection.euclidean_proj_l1ball(xvec[n+1:], reg)
+            xsol = base.vec2mat(xvec, n)
+            if show and it % 100 == 0:
+                ax.clear()
+                plot_mat(xsol, ax, labels=data.labels)
+        if show:
+            plt.show()
+        return xsol
+
+
+def learn_toy():
+    #data = [[]]*1 + [[0]]*2 + [[0, 1]]*4 + [[0, 2]]*3
+    #n = 3
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--show', action='store_true')
+    args = parser.parse_args()
+
+    data = base.read_data()
+    labels = ['TP53(M)', 'MDM2(A)', 'MDM4(A)', 'CDKN2A(D)', 'CDK4(A)',
+              'NF1(M)', 'IDH1(M)', 'PTEN(M)', 'PTEN(D)', 'EGFR(M)',
+              'RB1(D)', 'PDGFRA(A)', 'FAF1(D)', 'SPTA1(M)', 'PIK3CA(M)',
+              'OBSCN(M)', 'CNTNAP2(M)', 'PAOX(M)', 'TP53(D)', 'LRP2(M)']
+     
+    data = data.subset(data.idx(labels))
+
+    #data = datasets.comet('gbm')
+    #cutoff = 0.04
+    #keep = []
+    #for idx in range(data.nitems):
+    #    if data.marginals[idx] > cutoff:
+    #        keep.append(idx)
+    #data = data.subset(keep)
+    #print(data)
+
+    opt = Optimizer(lambda t, x: diff.loglik_data(t, x, 200))
+    theta = np.random.uniform(0, 0, (data.nitems, data.nitems))
+    theta = opt.run(data, niter=500, xinit=theta, show=args.show)
+    print('theta =\n', theta)
+    #base.sample_stat(theta, 10000, seq=False)
+
+
 if __name__ == '__main__':
-    learn()
+    learn_toy()

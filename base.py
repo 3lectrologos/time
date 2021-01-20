@@ -2,8 +2,6 @@ import numpy as np
 import matplotlib.pylab as plt
 import itertools
 import collections
-import pandas as pd
-import lbfgs
 import sim
 import util
 import argparse
@@ -152,6 +150,7 @@ if __name__ == '__main__':
     x0 = np.random.uniform(-5, 5, (n, n))
     #x0 = np.ones((n, n))
 
+    import lbfgs
     if args.reg:
         orthantwise_c = 0.01
         print(f'Running with reg. c = {orthantwise_c}')

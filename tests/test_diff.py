@@ -1,6 +1,5 @@
 import numpy as np
 import numpy.testing as nptest
-import base
 import pydiff
 from cpp import diff
 
@@ -14,7 +13,7 @@ def test_diff_seq():
             np.random.seed(seed)
             theta = np.random.uniform(-5, 5, (n, n))
             seq = list(np.random.choice(list(range(n)), seqlen, replace=False))
-            pylik, pygrad = pydiff.loglik_seq_new(theta, seq)
+            pylik, pygrad = pydiff.loglik_seq(theta, seq)
             cplik, cpgrad = diff.loglik_seq(theta, seq)
             nptest.assert_almost_equal(pylik, cplik)
             nptest.assert_almost_equal(pygrad, cpgrad)
@@ -29,7 +28,7 @@ def test_diff_set():
             np.random.seed(seed)
             theta = np.random.uniform(-5, 5, (n, n))
             seq = list(np.random.choice(list(range(n)), seqlen, replace=False))
-            pylik, pygrad = pydiff.loglik_set_new(theta, seq)
+            pylik, pygrad = pydiff.loglik_set(theta, seq)
             cplik, cpgrad = diff.loglik_set_full(theta, seq)
             nptest.assert_almost_equal(pylik, cplik)
             nptest.assert_almost_equal(pygrad, cpgrad)

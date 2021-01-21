@@ -12,7 +12,6 @@
 namespace py = pybind11;
 
 
-typedef std::vector<std::vector<double>> mat_t;
 typedef std::vector<double> seq_t;
 
 
@@ -56,7 +55,7 @@ double logsumexp(const std::vector<double>& a) {
 }
 
 
-double loglik_seq_nograd(Eigen::MatrixXd theta, const seq_t& seq) {
+double loglik_seq_nograd(const Eigen::MatrixXd& theta, const seq_t& seq) {
   int n = theta.rows();
   std::list<int> rest;
   for (auto i=0; i < n; i++) rest.push_back(i);
@@ -96,7 +95,7 @@ double loglik_seq_nograd(Eigen::MatrixXd theta, const seq_t& seq) {
 }
 
 
-std::pair<double, Eigen::MatrixXd> loglik_seq(Eigen::MatrixXd theta, const seq_t& seq) {
+std::pair<double, Eigen::MatrixXd> loglik_seq(const Eigen::MatrixXd& theta, const seq_t& seq) {
   int n = theta.rows();
   std::list<int> rest;
   for (auto i=0; i < n; i++) rest.push_back(i);
@@ -159,7 +158,7 @@ std::vector<seq_t> all_perms(const seq_t& set) {
 }
 
 
-std::vector<seq_t> sample_perms(Eigen::MatrixXd theta, const seq_t& set, int nperms) {
+std::vector<seq_t> sample_perms(const Eigen::MatrixXd& theta, const seq_t& set, int nperms) {
   int burnin = nperms;
   std::vector<seq_t> result;
   seq_t cur(set);
@@ -181,7 +180,7 @@ std::vector<seq_t> sample_perms(Eigen::MatrixXd theta, const seq_t& set, int npe
 
 
 std::pair<double, Eigen::MatrixXd> loglik_set_aux(
-    Eigen::MatrixXd theta, const seq_t& set, std::vector<seq_t> perms) {
+    const Eigen::MatrixXd& theta, const seq_t& set, std::vector<seq_t> perms) {
   auto n = theta.rows();
   std::vector<double> liks(perms.size());
   std::vector<Eigen::MatrixXd> grads(perms.size());
@@ -203,20 +202,20 @@ std::pair<double, Eigen::MatrixXd> loglik_set_aux(
 }
 
 
-std::pair<double, Eigen::MatrixXd> loglik_set_full(Eigen::MatrixXd theta, const seq_t& set) {
+std::pair<double, Eigen::MatrixXd> loglik_set_full(const Eigen::MatrixXd& theta, const seq_t& set) {
   auto perms = all_perms(set);
   return loglik_set_aux(theta, set, perms);
 }
 
 
-std::pair<double, Eigen::MatrixXd> loglik_set(Eigen::MatrixXd theta, const seq_t& set, int nperms) {
+std::pair<double, Eigen::MatrixXd> loglik_set(const Eigen::MatrixXd& theta, const seq_t& set, int nperms) {
   auto perms = sample_perms(theta, set, nperms);
   return loglik_set_aux(theta, set, perms);
 }
 
 
 // TODO: Refactor this and the above?
-std::pair<double, Eigen::MatrixXd> loglik_data_full(const Eigen::MatrixXd theta, const std::vector<seq_t> data) {
+std::pair<double, Eigen::MatrixXd> loglik_data_full(const Eigen::MatrixXd& theta, const std::vector<seq_t>& data) {
   auto n = theta.rows();
   double lik = 0;
   Eigen::MatrixXd grad = Eigen::MatrixXd::Zero(n, n);
@@ -232,10 +231,14 @@ std::pair<double, Eigen::MatrixXd> loglik_data_full(const Eigen::MatrixXd theta,
 }
 
 
-Eigen::MatrixXd loglik_data(const Eigen::MatrixXd theta, const std::vector<seq_t> data, int nperms) {
+#pragma omp declare reduction (+: Eigen::MatrixXd: omp_out=omp_out+omp_in) \
+  initializer(omp_priv=Eigen::MatrixXd::Zero(omp_orig.rows(), omp_orig.cols()))
+
+
+Eigen::MatrixXd loglik_data(const Eigen::MatrixXd& theta, const std::vector<seq_t>& data, int nperms) {
   auto n = theta.rows();
   Eigen::MatrixXd grad = Eigen::MatrixXd::Zero(n, n);
-#pragma omp parallel for
+#pragma omp parallel for reduction(+:grad)
   for (auto i=0; i < data.size(); i++) {
     grad += loglik_set(theta, data[i], nperms).second;
   }

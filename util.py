@@ -27,6 +27,30 @@ def powerset(iterable):
         itertools.combinations(s, r) for r in range(len(s)+1))
 
 
+def mat2vec(mat):
+    uidx = np.triu_indices(mat.shape[0], k=1)
+    lidx = np.tril_indices(mat.shape[0], k=-1)
+    upper = mat[uidx]
+    lower = mat[lidx]
+    diag = np.diag(mat)
+    return np.hstack((diag, upper, lower))
+
+
+def vec2mat(vec, n):
+    uidx = np.triu_indices(n, k=1)
+    lidx = np.tril_indices(n, k=-1)
+    didx = np.diag_indices(n)
+    ntri = uidx[0].shape[0]
+    diag = vec[:n]
+    upper = vec[n:n+ntri]
+    lower = vec[n+ntri:]
+    mat = np.zeros((n, n))
+    mat[uidx] = upper
+    mat[lidx] = lower
+    mat[didx] = diag
+    return mat
+
+
 def permute_rows(mat, seed=None, fixed=None):
     if seed is not None:
         np.random.seed(seed)
@@ -274,7 +298,7 @@ def dot():
 
 
 def dot10():
-    sys.stdout.write('|')
+    sys.stdout.write('|\n')
     sys.stdout.flush()
 
 

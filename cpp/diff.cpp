@@ -215,6 +215,23 @@ std::pair<double, Eigen::MatrixXd> loglik_set(Eigen::MatrixXd theta, const seq_t
 }
 
 
+// TODO: Refactor this and the above?
+std::pair<double, Eigen::MatrixXd> loglik_data_full(const Eigen::MatrixXd theta, const std::vector<seq_t> data) {
+  auto n = theta.rows();
+  double lik = 0;
+  Eigen::MatrixXd grad = Eigen::MatrixXd::Zero(n, n);
+#pragma omp parallel for
+  for (auto i=0; i < data.size(); i++) {
+    auto res = loglik_set_full(theta, data[i]);
+    lik += res.first;
+    grad += res.second;
+  }
+  lik /= data.size();
+  grad /= data.size();
+  return std::make_pair(lik, grad);
+}
+
+
 Eigen::MatrixXd loglik_data(const Eigen::MatrixXd theta, const std::vector<seq_t> data, int nperms) {
   auto n = theta.rows();
   Eigen::MatrixXd grad = Eigen::MatrixXd::Zero(n, n);
@@ -227,12 +244,12 @@ Eigen::MatrixXd loglik_data(const Eigen::MatrixXd theta, const std::vector<seq_t
 }
 
 
-
 PYBIND11_MODULE(diff, m) {
   m.def("loglik_seq", &loglik_seq, py::return_value_policy::reference_internal);
   m.def("loglik_set", &loglik_set, py::return_value_policy::reference_internal);
   m.def("loglik_set_full", &loglik_set_full, py::return_value_policy::reference_internal);
   m.def("loglik_data", &loglik_data, py::return_value_policy::reference_internal);
+  m.def("loglik_data_full", &loglik_data_full, py::return_value_policy::reference_internal);
 }
 
 

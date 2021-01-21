@@ -8,48 +8,18 @@ import argparse
 from datasets import Data
 
 
-def powerset(iterable):
-    s = list(iterable)
-    return itertools.chain.from_iterable(
-        itertools.combinations(s, r) for r in range(len(s)+1))
-
-
-def mat2vec(mat):
-    uidx = np.triu_indices(mat.shape[0], k=1)
-    lidx = np.tril_indices(mat.shape[0], k=-1)
-    upper = mat[uidx]
-    lower = mat[lidx]
-    diag = np.diag(mat)
-    return np.hstack((diag, upper, lower))
-
-
-def vec2mat(vec, n):
-    uidx = np.triu_indices(n, k=1)
-    lidx = np.tril_indices(n, k=-1)
-    didx = np.diag_indices(n)
-    ntri = uidx[0].shape[0]
-    diag = vec[:n]
-    upper = vec[n:n+ntri]
-    lower = vec[n+ntri:]
-    mat = np.zeros((n, n))
-    mat[uidx] = upper
-    mat[lidx] = lower
-    mat[didx] = diag
-    return mat
-
-
 def get_pdata(data):
     n = data.nitems
-    freqs = dict(zip(powerset(range(n)), [0]*(2**n)))
+    freqs = dict(zip(util.powerset(range(n)), [0]*(2**n)))
     for d in data:
         freqs[tuple(d)] += 1.0
-    freqs = np.array([freqs[key] for key in powerset(range(n))])
+    freqs = np.array([freqs[key] for key in util.powerset(range(n))])
     freqs /= len(data)
     return freqs
 
 
 def idx_to_set(n):
-    sets = powerset(range(n))
+    sets = util.powerset(range(n))
     return dict(zip(range(2**n), sets))
 
 

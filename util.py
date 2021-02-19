@@ -98,6 +98,7 @@ def plot_matrix(m, ax=None, xlabels=None, ylabels=None, text=None,
         xlabels = [xlabels[x] for x in permx]
     if permy is not None:
         m = permy_matrix(m, permy)
+        ylabels = [ylabels[x] for x in permy]
     nrows = m.shape[0]
     ncols = m.shape[1]
     if ax is None:

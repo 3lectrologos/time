@@ -5,7 +5,7 @@ import collections
 import sim
 import util
 import argparse
-from datasets import Data
+import datasets
 
 
 def get_pdata(data):

@@ -214,12 +214,13 @@ std::pair<double, Eigen::MatrixXd> loglik_set(const Eigen::MatrixXd& theta, cons
 }
 
 
-// TODO: Refactor this and the above?
+#pragma omp declare reduction(+: Eigen::MatrixXd: omp_out=omp_out+omp_in) initializer(omp_priv = omp_orig)
+
 std::pair<double, Eigen::MatrixXd> loglik_data_full(const Eigen::MatrixXd& theta, const std::vector<seq_t>& data) {
   auto n = theta.rows();
   double lik = 0;
   Eigen::MatrixXd grad = Eigen::MatrixXd::Zero(n, n);
-#pragma omp parallel for
+#pragma omp parallel for reduction(+:lik,grad)
   for (auto i=0; i < data.size(); i++) {
     auto res = loglik_set_full(theta, data[i]);
     lik += res.first;
@@ -234,7 +235,7 @@ std::pair<double, Eigen::MatrixXd> loglik_data_full(const Eigen::MatrixXd& theta
 Eigen::MatrixXd loglik_data(const Eigen::MatrixXd& theta, const std::vector<seq_t>& data, int nperms) {
   auto n = theta.rows();
   Eigen::MatrixXd grad = Eigen::MatrixXd::Zero(n, n);
-#pragma omp parallel for
+#pragma omp parallel for reduction(+:grad)
   for (auto i=0; i < data.size(); i++) {
     // TODO: Refactor this
     if (data[i].size() < 5) {

@@ -23,6 +23,17 @@ def idx_to_set(n):
     return dict(zip(range(2**n), sets))
 
 
+def pt(x):
+    n = x.shape[0]
+    Qt = getq(x)
+    # NOTE: Careful with the transposition here.
+    Rt = np.eye(2**n) - Qt.T
+    p0 = np.zeros(2**n)
+    p0[0] = 1.0
+    pt = np.linalg.solve(Rt, p0)
+    return pt
+
+
 def loglik(xvec, g, pdata):
     n = int(np.sqrt(xvec.shape[0]))
     x = vec2mat(xvec, n)
@@ -83,6 +94,7 @@ def get_samples(x, nsamples, seq=False):
     if not seq:
         samples = [list(i2s[s[-1]]) for s in samples]
     else:
+        # TODO: Make into ordered list, instead of list of tuples
         samples = [[i2s[i] for i in s] for s in samples]
     return samples
 

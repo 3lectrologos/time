@@ -298,8 +298,8 @@ def dot():
     sys.stdout.flush()
 
 
-def dot10():
-    sys.stdout.write('|\n')
+def dot10(extra=''):
+    sys.stdout.write(f'| {extra}\n')
     sys.stdout.flush()
 
 

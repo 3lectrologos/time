@@ -5,7 +5,6 @@ unzip -q eigen.zip
 rm eigen.zip
 mv eigen-3.3.9 eigen
 
-cd cpp
 sudo apt install cmake
 cmake .
 make

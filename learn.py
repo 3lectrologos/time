@@ -433,9 +433,45 @@ def flik_2(x, data, nrest):
     return -lik[0]
 
 
-def flik_3(x, data, nrest, ngrid, reg):
+def flik_3(x, data, nrest, reg):
+    theta = np.array([
+        [0, x[1]],
+        [x[2], x[0]]
+    ])
+    trest = -1*np.eye(nrest)
+    theta = np.block([[theta, np.zeros((2, nrest))],
+                      [np.zeros((nrest, 2)), trest]])
+
+    lik = diff.loglik_data_full(theta, data)[0]
+    lik -= reg * (np.abs(x[1]) + np.abs(x[2]))
+    return lik
+
+
+def get_lik_new(data, nrest, ngrid, reg):
+    lo, hi = -2, 6
+    t0, t1, t2 = np.meshgrid(np.linspace(lo, hi, ngrid),
+                             np.linspace(lo, hi, ngrid),
+                             np.linspace(lo, hi, ngrid),
+                             indexing='ij')
+    lik = np.zeros_like(t1)
+    for i in range(ngrid):
+        for j in range(ngrid):
+            for k in range(ngrid):
+                print(i)
+                ts = [t0[i, j, k], t1[i, j, k], t2[i, j, k]]
+                lik[i, j, k] = flik_3(ts, data, nrest, reg)
+
+    lik = -np.amax(lik, axis=0)
+    t1 = t1[0, :, :]
+    print(t1)
+    t2 = t2[0, :, :]
+    print(t2)
+    return t1, t2, lik
+
+
+def flik_3max(x, data, nrest, reg):
     liks = []
-    for t0 in np.linspace(-x[0]-5, -x[0]+5, 20):
+    for t0 in np.linspace(x[0]-5, x[0]+5, 30):
         theta = np.array([
             [0, x[0]],
             [x[1], t0]
@@ -459,7 +495,7 @@ def get_lik(data, nrest, ngrid, reg):
         for j in range(ngrid):
             print(i, j)
             ts = [t1[i, j], t2[i, j]]
-            lik[i, j] = flik_3(ts, data, nrest, ngrid, reg)
+            lik[i, j] = flik_3max(ts, data, nrest, reg)
     return t1, t2, lik
 
 
@@ -582,7 +618,7 @@ def plot_max2():
     fig.tight_layout()
 
     
-    x1, x2, lik = get_lik(data, nrest, ngrid=10, reg=reg)
+    x1, x2, lik = get_lik(data, nrest, ngrid=15, reg=reg)
     levels = np.linspace(-np.min(lik)-0.1, -np.min(lik), 50)
     print(lik)
     print(levels)

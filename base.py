@@ -1,4 +1,5 @@
 import numpy as np
+import scipy.linalg
 import matplotlib.pylab as plt
 import itertools
 import collections
@@ -31,6 +32,16 @@ def pt(x):
     p0 = np.zeros(2**n)
     p0[0] = 1.0
     pt = np.linalg.solve(Rt, p0)
+    return pt
+
+
+def ptt(x, t):
+    n = x.shape[0]
+    Qt = getq(x)
+    eq = scipy.linalg.expm(t*Qt.T)
+    p0 = np.zeros(2**n)
+    p0[0] = 1.0
+    pt = np.dot(eq, p0)
     return pt
 
 
@@ -86,10 +97,10 @@ def getq(x):
     return q
 
 
-def get_samples(x, nsamples, seq=False):
+def get_samples_old(x, nsamples, seq=False):
     n = x.shape[0]
     Q = getq(x)
-    samples = [sim.draw(Q) for i in range(nsamples)]
+    samples = [sim.draw_old(Q) for i in range(nsamples)]
     i2s = idx_to_set(n)
     if not seq:
         samples = [list(i2s[s[-1]]) for s in samples]
@@ -99,14 +110,20 @@ def get_samples(x, nsamples, seq=False):
     return samples
 
 
+def get_samples(theta, nsamples, seq=False):
+    n = theta.shape[0]
+    samples = [sim.draw(theta) for i in range(nsamples)]
+    return samples
+
+
 def sample_stat(x, nsamples, seq=False):
     samples = get_samples(x, nsamples, seq)
-    samples = [tuple(s) for s in samples]
+    samples = [frozenset(s) for s in samples]
     counter = collections.Counter(samples)
     for s in counter:
         counter[s] /= nsamples
-    for key in sorted(counter.keys()):
-        print(key, ':', counter[key])
+    for key in sorted([sorted(list(key)) for key in counter.keys()]):
+        print(key, ':', counter[frozenset(key)])
 
 
 if __name__ == '__main__':

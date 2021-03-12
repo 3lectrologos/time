@@ -6,6 +6,7 @@ import lbfgs
 import datasets
 import pickle
 import util
+import sim
 from cpp import diff
 
 
@@ -60,6 +61,7 @@ class Optimizer:
                 for j in range(g.shape[1]):
                     if i != j and not (i in [0, 1] and j in [0, 1]):
                         g[i, j] = 0
+            g[0, 0] = 0
             #
             
             xsol += step*g
@@ -106,6 +108,7 @@ def learn(data, **kwargs):
             for j in range(init_theta.shape[1]):
                 if i != j and not (i in [0, 1] and j in [0, 1]):
                     init_theta[i, j] = 0
+        init_theta[0, 0] = 0
         #
     elif init_theta == 'diag':
         th = np.zeros((data.nitems, data.nitems))
@@ -268,7 +271,7 @@ def recover():
             [-1.6,   0],
             [10,   -1.9]])
 
-    nrest = 5
+    nrest = 1
     trest = -1*np.eye(nrest)
     theta = np.block([[theta, np.zeros((2, nrest))],
                       [np.zeros((nrest, 2)), trest]])
@@ -287,18 +290,14 @@ def recover():
             pickle.dump(lst, fout)
     else:
         import pickle
-        with open('data.pcl', 'rb') as fin:
+        with open('data_contour.pcl', 'rb') as fin:
             lst = pickle.load(fin)
     data = datasets.Data.from_list([lst], nitems=2+nrest)
 
     lik = diff.loglik_data_full(theta, data)[0]
     print(f'Log-lik (true) = {lik}')
-
-    if False:
-        init_theta = theta.copy()
-        th = learn(data, show=True, niter=3000, reg=2000, init_theta=init_theta, exact=True)
-    else:
-        th = learn(data, show=True, niter=20000, reg=20000, exact=True)
+    
+    th = learn(data, show=True, niter=20000, reg=3.1, exact=True)
     print(th)
     with open('th.pcl', 'wb') as fout:
         pickle.dump(th, fout)
@@ -433,7 +432,8 @@ def flik_2(x, data, nrest):
     return -lik[0]
 
 
-def flik_3(x, data, nrest, reg):
+def flik_3_new(x, data, reg):
+    nrest = data.nitems-2
     theta = np.array([
         [0, x[1]],
         [x[2], x[0]]
@@ -447,89 +447,55 @@ def flik_3(x, data, nrest, reg):
     return lik
 
 
-def get_lik_new(data, nrest, ngrid, reg):
-    lo, hi = -2, 6
-    t0, t1, t2 = np.meshgrid(np.linspace(lo, hi, ngrid),
-                             np.linspace(lo, hi, ngrid),
-                             np.linspace(lo, hi, ngrid),
+def get_lik_new(data, ngrid, reg):
+    lo, hi = -10, 10
+    t0, t1, t2 = np.meshgrid(np.linspace(-5, -1, ngrid),
+                             np.linspace(0, 4, ngrid),
+                             np.linspace(-1, 2.5, ngrid),
                              indexing='ij')
     lik = np.zeros_like(t1)
     for i in range(ngrid):
+        print(i)
         for j in range(ngrid):
             for k in range(ngrid):
-                print(i)
                 ts = [t0[i, j, k], t1[i, j, k], t2[i, j, k]]
-                lik[i, j, k] = flik_3(ts, data, nrest, reg)
+                lik[i, j, k] = flik_3_new(ts, data, reg)
 
-    lik = -np.amax(lik, axis=0)
-    t1 = t1[0, :, :]
-    print(t1)
-    t2 = t2[0, :, :]
-    print(t2)
-    return t1, t2, lik
+    x12 = t1[0, :, :]
+    y12 = t2[0, :, :]
+    lik12 = -np.amax(lik, axis=0)
 
+    x02 = t0[:, 0, :]
+    y02 = t2[:, 0, :]
+    lik02 = -np.amax(lik, axis=1)
 
-def flik_3max(x, data, nrest, reg):
-    liks = []
-    for t0 in np.linspace(x[0]-5, x[0]+5, 30):
-        theta = np.array([
-            [0, x[0]],
-            [x[1], t0]
-        ])
-        trest = -1*np.eye(nrest)
-        theta = np.block([[theta, np.zeros((2, nrest))],
-                          [np.zeros((nrest, 2)), trest]])
-
-        lik = diff.loglik_data_full(theta, data)[0]
-        lik -= reg * (np.abs(x[0]) + np.abs(x[1]))
-        liks.append(lik)
-    return -np.max(liks)
+    x10 = t1[:, :, 0]
+    y10 = t0[:, :, 0]
+    lik10 = -np.amax(lik, axis=2)
+    
+    return (x12, y12, lik12), (x02, y02, lik02), (x10, y10, lik10)
 
 
-def get_lik(data, nrest, ngrid, reg):
-    lo, hi = -2, 6
-    t1, t2 = np.meshgrid(np.linspace(lo, hi, ngrid),
-                         np.linspace(lo, hi, ngrid))
-    lik = np.zeros_like(t1)
-    for i in range(ngrid):
-        for j in range(ngrid):
-            print(i, j)
-            ts = [t1[i, j], t2[i, j]]
-            lik[i, j] = flik_3max(ts, data, nrest, reg)
-    return t1, t2, lik
-
-
-def flik_full(x, g, data, nrest):
+def flik_full(x, g, data, times=None):
+    nrest = data.nitems-2
     theta = np.array([
-        [0, x[1]],
-        [x[2], x[0]]
+        [x[0], x[2]],
+        [x[3], x[1]]
     ])
     trest = -1*np.eye(nrest)
     theta = np.block([[theta, np.zeros((2, nrest))],
                       [np.zeros((nrest, 2)), trest]])
 
-    lik = diff.loglik_data_full(theta, data)
-    if g is not None:
-        g[0] = -lik[1][1, 1]
-        g[1] = -lik[1][0, 1]
-        g[2] = -lik[1][1, 0]
-    return -lik[0]
-
-
-def max_flik_full(data, nrest, reg):
-    import scipy.optimize
-    fun = lambda x, g: flik_full(x, g, data, nrest)
-    x0 = np.random.uniform(-5, 5, 3)
-
-    if reg > 0:
-        sol = lbfgs.fmin_lbfgs(fun, x0=x0, epsilon=1e-8,
-                               orthantwise_c=reg,
-                               orthantwise_start=1)
-        val = -flik_full(sol, None, data, nrest) - reg*(np.abs(sol[1]) + np.abs(sol[2]))
+    if times is None:
+        lik = diff.loglik_data_full(theta, data)
     else:
-        sol = lbfgs.fmin_lbfgs(fun, x0=x0, epsilon=1e-8)
-        val = -flik_full(sol, None, data, nrest)
-    return sol, val
+        lik = diff.loglik_data_full(theta, data, times)
+    if g is not None:
+        g[0] = -lik[1][0, 0]
+        g[1] = -lik[1][1, 1]
+        g[2] = -lik[1][0, 1]
+        g[3] = -lik[1][1, 0]
+    return -lik[0]
 
 
 def plot_max():
@@ -566,74 +532,168 @@ def closed_form(data, *args, **kwargs):
     return ts, 0
 
 
-def plot_max2():
-    nreps = 100
-    ndata = 300
-    reg = 0.005
-
-    theta = np.array([
-        [0,   5],
-        [0,   -5]])
-    nrest = 1
-    trest = -1*np.eye(nrest)
-    theta = np.block([[theta, np.zeros((2, nrest))],
-                      [np.zeros((nrest, 2)), trest]])
-    
-    res = []
-    vals = []
-
-    xs, ps = get_dist(theta)
-
-    import pickle
-    if False:
+def sample_data(xs, ps, nrest, ndata):
+    if True:
         lst = np.random.choice(xs, ndata, replace=True, p=ps)
         with open('data.pcl', 'wb') as fout:
             pickle.dump(lst, fout)
     else:
-        import pickle
-        with open('data.pcl', 'rb') as fin:
+        with open('data_two_opt.pcl', 'rb') as fin:
             lst = pickle.load(fin)
     data = datasets.Data.from_list([lst], nitems=2+nrest)
+    return data
 
+def save_lik(x, g, fx, *args, **kwargs):
+    sav = kwargs.get('sav')
+    gsav = kwargs.get('gsav')
+    #print('x->', x)
+    #print('g->', g)
+    sav.append(x.copy())
+    gsav.append(g.copy())
+
+
+def max_flik_full(data, reg, times=None):
+    import scipy.optimize
+    fun = lambda x, g: flik_full(x, g, data, times)
+    x0 = np.random.uniform(-2, 2, 4)
+    #x0 = np.array([-2.48745317, 2.41311082, 0.87718485])# + np.random.uniform(-0.5, 0.5, 3)
+
+    sav = [x0.copy()]
+    gsav = []
+    if reg > 0:
+        #sol = lbfgs.fmin_lbfgs(fun, x0=x0, epsilon=1e-8,
+        #                       max_linesearch=200,
+        #                       min_step=1e-60,
+        #                       progress=lambda *args: save_lik(*args, sav=sav))
+        #print('UNC DONE ======================')
+        sol = x0
+        for i in range(4):
+            sol = lbfgs.fmin_lbfgs(fun, x0=sol,
+                                   max_linesearch=100,
+                                   min_step=1e-40,
+                                   #ftol=1e-6,
+                                   #gtol=1e-4,
+                                   #past=20,
+                                   #delta=1e-20,
+                                   orthantwise_c=reg,
+                                   orthantwise_start=2,
+                                   progress=lambda *args: save_lik(*args, sav=sav, gsav=gsav))
+        val = -flik_full(sol, None, data, times) - reg*(np.abs(sol[2]) + np.abs(sol[3]))
+    else:
+        sol = lbfgs.fmin_lbfgs(fun, x0=x0, epsilon=1e-8,
+                               progress=lambda *args: save_lik(*args, sav=sav))
+        val = -flik_full(sol, None, data, times)
+    return sol, val, (sav, gsav)
+
+
+def get_theta(nrest):
+    theta = np.array([
+        [0,   5],
+        [0,   -5]
+    ])
+    trest = 0*np.eye(nrest)
+    theta = np.block([[theta, np.zeros((2, nrest))],
+                      [np.zeros((nrest, 2)), trest]])
+    return theta
+
+
+def save_data(nreps, ndata, nrest):
+    theta = get_theta(nrest)
     for i in range(nreps):
-        print(i)
+        lst, times = sim.draw(theta, ndata, time=True)
+        with open(f'synth/data_{i}.pcl', 'wb') as fout:
+            pickle.dump((lst, times, 2+nrest), fout)
+
+
+def get_data(i):
+    with open(f'synth/data_{i}.pcl', 'rb') as fin:
+        lst, times, nitems = pickle.load(fin)
+    data = datasets.Data.from_list([lst], nitems=nitems)
+    return data, times
+
+
+def plot_max2():
+    reg = 0.01
+
+    nreps = 200
+    ndata = 2000
+    nrest = 7
+    
+    res = []
+    vals = []
+    savs = []
+    gsavs = []
+
+    if False:
+        import os, shutil
+        shutil.rmtree('synth', ignore_errors=True)
+        os.mkdir('synth')
+        save_data(nreps, ndata, nrest)
+    
+    for i in range(nreps):
+        data, times = get_data(i)
+        data = data.subset([0, 1, 2, 3])
         #import base
         #lst = base.get_samples(theta, ndata)
 
-        r, val = max_flik_full(data, nrest, reg)
-        #r, val = closed_form(data, nrest)
+        r, val, (sav, gsav) = max_flik_full(data, reg, times)
+        #r, val = closed_form(data)
 
-        print(f'val = {val}')
+        print(f'{i} | val = {val}')
         res.append(r)
         vals.append(val)
+        savs.append(sav)
+        gsavs.append(gsav)
 
     maxval = np.max(vals)
+    minval = np.min(vals)
     cs = [min(0.1, maxval-v) for v in vals]
     
     t0 = [r[0] for r in res]
     t1 = [r[1] for r in res]
     t2 = [r[2] for r in res]
+    t3 = [r[3] for r in res]
 
     fig, ax = plt.subplots(2, 2, figsize=(12, 9))
     fig.tight_layout()
 
-    
-    x1, x2, lik = get_lik(data, nrest, ngrid=15, reg=reg)
-    levels = np.linspace(-np.min(lik)-0.1, -np.min(lik), 50)
-    print(lik)
-    print(levels)
-    ax[0, 0].contourf(x1, x2, -lik, levels=levels, cmap='bone')
-        
-    ax[0, 0].scatter(t1, t2, c=cs, alpha=0.5)
+    if False:
+        res12, res02, res10 = get_lik_new(data, ngrid=30, reg=reg)
+
+        lik = res12[2]
+        levels = np.linspace(-np.min(lik)-0.05, -np.min(lik), 60)
+
+        ax[0, 0].contourf(res12[0], res12[1], -res12[2], levels=levels, cmap='bone')
+        ax[0, 1].contourf(res02[0], res02[1], -res02[2], levels=levels, cmap='bone')
+        ax[1, 0].contourf(res10[0], res10[1], -res10[2], levels=levels, cmap='bone')
+
+    if False:
+        for i, sav in enumerate(savs):
+            if sav[-1][1] < 2.5:
+                print('GRAD:', gsavs[i][-1])
+                print('SOL:', sav)
+                for i in range(len(sav)-1):
+                    ax[0, 0].plot([sav[i][1], sav[i+1][1]], [sav[i][2], sav[i+1][2]], 'b.-', alpha=0.2)
+                    ax[0, 1].plot([sav[i][0], sav[i+1][0]], [sav[i][2], sav[i+1][2]], 'b.-', alpha=0.2)
+                    ax[1, 0].plot([sav[i][1], sav[i+1][1]], [sav[i][0], sav[i+1][0]], 'b.-', alpha=0.2)
+
+    theta = get_theta(nrest)
+    ax[0, 0].scatter(t2, t3, c=cs, alpha=0.5)
     ax[0, 0].plot(theta[0, 1], theta[1, 0], 'rx')
-    ax[0, 1].scatter(t0, t2, c=cs, alpha=0.5)
+    ax[0, 1].scatter(t1, t3, c=cs, alpha=0.5)
     ax[0, 1].plot(theta[1, 1], theta[1, 0], 'rx')
-    ax[1, 0].scatter(t1, t0, c=cs, alpha=0.5)
+    ax[1, 0].scatter(t2, t1, c=cs, alpha=0.5)
     ax[1, 0].plot(theta[0, 1], theta[1, 1], 'rx')
+    ax[1, 1].scatter(t0, t3, c=cs, alpha=0.5)
+    ax[1, 1].plot(theta[0, 0], theta[1, 0], 'rx')
     for i in range(2):
         for j in range(2):
             ax[i, j].set_xlim((-20, 20))
             ax[i, j].set_ylim((-20, 20))
+    print(f'Max dif: {maxval-minval}')
+    cnt1 = len([x for x in t3 if -0.1 < x < 0.1])
+    cnt2 = len([x for x in t2 if -0.1 < x < 0.1])
+    print(f'cnt1 = {cnt1}, cnt2 = {cnt2}')
     plt.show()
 
 

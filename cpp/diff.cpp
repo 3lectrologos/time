@@ -151,141 +151,13 @@ std::pair<double, Eigen::MatrixXd> loglik_seq_notime(const Eigen::MatrixXd& thet
 }
 
 
-double loglik_seq_nograd_time(const Eigen::MatrixXd& theta, const seq_t& seq, double time) {
-  int n = theta.rows();
-  std::list<int> rest;
-  for (auto i=0; i < n; i++) rest.push_back(i);
-
-  double lik = 0;
-  for (auto k=0; k < seq.size()+1; k++) {
-    if (k < seq.size()) {
-      int i = seq[k];
-      lik += theta(i, i);
-      for(auto r=k+1; r < seq.size(); r++) {
-        int j = seq[r];
-        lik += theta(i, j);
-      }
-    }
-
-    if (rest.size() > 0) {
-      dseq_t sumth(rest.size());
-      int r = 0;
-      for (auto j : rest) {
-        sumth[r] = theta(j, j);
-        for (auto s=0; s < k; s++) {
-          sumth[r] += theta(seq[s], j);
-        }
-        r++;
-      }
-
-      double lse = logsumexp(sumth);
-      double qt = exp(lse)*time;
-      double eqt = exp(-qt);
-      double fac = eqt*qt / (exp(log1p(-eqt)));
-
-      if (k < seq.size()) {
-        lik -= lse;
-        lik += log1p(-eqt);
-      } else {
-        lik += qt;
-      }
-    }
-    
-    if (k < seq.size()) {
-      auto it = std::find(rest.begin(), rest.end(), seq[k]);
-      rest.erase(it);
-    }
-  }
-
-  return lik;
-}
-
-
-std::pair<double, Eigen::MatrixXd> loglik_seq_time(
-      const Eigen::MatrixXd& theta, const seq_t& seq, double time) {
-  int n = theta.rows();
-  std::list<int> rest;
-  for (auto i=0; i < n; i++) rest.push_back(i);
-  Eigen::MatrixXd grad = Eigen::MatrixXd::Zero(n, n);
-
-  double lik = 0;
-  for (auto k=0; k < seq.size()+1; k++) {
-    if (k < seq.size()) {
-      int i = seq[k];
-      lik += theta(i, i);
-      grad(i, i) += 1;
-      for(auto r=k+1; r < seq.size(); r++) {
-        int j = seq[r];
-        lik += theta(i, j);
-        grad(i, j) += 1;
-      }
-    }
-
-    if (rest.size() > 0) {
-      dseq_t sumth(rest.size());
-      int r = 0;
-      for (auto j : rest) {
-        sumth[r] = theta(j, j);
-        for (auto s=0; s < k; s++) {
-          sumth[r] += theta(seq[s], j);
-        }
-        r++;
-      }
-
-      double lse = logsumexp(sumth);
-      double qt = exp(lse)*time;
-      double eqt = exp(-qt);
-      double fac = eqt*qt / (exp(log1p(-eqt)));
-
-      if (k < seq.size()) {
-        lik -= lse;
-        lik += log1p(-eqt);
-        r = 0;
-        for (auto j : rest) {
-          grad(j, j) += (fac-1)*exp(sumth[r] - lse);
-          for (auto s=0; s < k; s++) {
-            grad(seq[s], j) += (fac-1)*exp(sumth[r] - lse);
-          }
-          r++;
-        }
-      } else {
-        lik -= qt;
-        r = 0;
-        for (auto j : rest) {
-          grad(j, j) -= qt*exp(sumth[r] - lse);
-          for (auto s=0; s < k; s++) {
-            grad(seq[s], j) -= qt*exp(sumth[r] - lse);
-          }
-          r++;
-        }
-      }
-    }
-    
-    if (k < seq.size()) {
-      auto it = std::find(rest.begin(), rest.end(), seq[k]);
-      rest.erase(it);
-    }
-  }
-
-  return std::make_pair(lik, grad);
-}
-
-
 double loglik_seq_nograd(const Eigen::MatrixXd& theta, const seq_t& seq, double time = NOTIME) {
-  if (time == NOTIME) {
-    return loglik_seq_nograd_notime(theta, seq);
-  } else {
-    return loglik_seq_nograd_time(theta, seq, time);
-  }
+  return loglik_seq_nograd_notime(theta, seq);
 }
 
 
 std::pair<double, Eigen::MatrixXd> loglik_seq(const Eigen::MatrixXd& theta, const seq_t& seq, double time = NOTIME) {
-  if (time == NOTIME) {
-    return loglik_seq_notime(theta, seq);
-  } else {
-    return loglik_seq_time(theta, seq, time);
-  }
+  return loglik_seq_notime(theta, seq);
 }
 
 
@@ -361,7 +233,7 @@ std::pair<double, Eigen::MatrixXd> loglik_data_full(const Eigen::MatrixXd& theta
   auto n = theta.rows();
   double lik = 0;
   Eigen::MatrixXd grad = Eigen::MatrixXd::Zero(n, n);
-#pragma omp parallel for reduction(+:lik,grad)
+  //#pragma omp parallel for reduction(+:lik,grad)
   for (auto i=0; i < data.size(); i++) {
     double time;
     if (times.size() == 0) {

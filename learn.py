@@ -7,6 +7,7 @@ import datasets
 import pickle
 import util
 import sim
+import joblib
 from cpp import diff
 
 
@@ -37,17 +38,44 @@ def plot_mat(theta, ax, labels, full=False, thresh=0.1):
 
 
 class Optimizer:
+    BUF_SIZE = 200
+    MIN_DIF = 0.03
+
+    def init_run(self, xinit, show):
+        if show:
+            self.fig, self.ax = plt.subplots(1, 1, figsize=(11, 11))
+            self.fig.tight_layout()
+            plt.gcf().show()
+        self.thetas = [np.zeros_like(xinit) for i in range(self.BUF_SIZE)]
+
+    def check_term(self, it, xsol):
+        self.thetas[it % self.BUF_SIZE] = xsol
+        maxdif = np.abs(xsol - self.thetas[(it+1) % self.BUF_SIZE]).max()
+        #
+        #arg = np.abs(xsol - thetas[(it+1) % self.BUF_SIZE]).argmax()
+        #
+        #print(maxdif, '--', arg)
+        if maxdif < self.MIN_DIF:
+            return True
+        else:
+            return False
+
+    def plot(self, it, show, data, xsol):
+        if it % 50 == 49:
+            util.dot10(str(it+1))
+        if show and it % 100 == 0:
+            self.ax.clear()
+            plot_mat(xsol, self.ax, labels=data.labels, full=True)
+
+
+class NAGOptimizer(Optimizer):
     GAMMA = 0.9
     
     def __init__(self, grad):
         self.grad = grad
 
-    def run(self, data, niter, xinit, reg, step=0.1, show=False, only_diag=False):
-        if show:
-            fig, ax = plt.subplots(1, 1, figsize=(11, 11))
-            fig.tight_layout()
-            plt.gcf().show()
-        
+    def run(self, data, niter, xinit, step, reg, show=False, only_diag=False, verbose=True):
+        self.init_run(xinit, show)
         n = xinit.shape[0]
         mom = np.zeros_like(xinit)
         xsol = np.copy(xinit)
@@ -55,15 +83,6 @@ class Optimizer:
             util.dot()
             xsol += self.GAMMA*mom
             g = self.grad(xsol, data)
-
-            # XXX
-            for i in range(g.shape[0]):
-                for j in range(g.shape[1]):
-                    if i != j and not (i in [0, 1] and j in [0, 1]):
-                        g[i, j] = 0
-            g[0, 0] = 0
-            #
-            
             xsol += step*g
             mom = self.GAMMA*mom + step*g
             # L1-projection
@@ -74,11 +93,51 @@ class Optimizer:
             else:
                 xvec[n:] = simplex_projection.euclidean_proj_l1ball(xvec[n:], reg)
             xsol = util.vec2mat(xvec, n)
-            if it % 50 == 49:
-                util.dot10(str(it+1))
-            if show and it % 50 == 0:
-                ax.clear()
-                plot_mat(xsol, ax, labels=data.labels, full=True)
+            # Check termination
+            if self.check_term(it, xsol):
+                break
+            # Plot stuff
+            self.plot(it, show, data, xsol)
+
+        #lik = diff.loglik_data_full(xsol, data)
+        #print('log-lik =', lik[0])
+        #
+        if show:
+            plt.show()
+        return xsol
+
+
+class AdaOptimizer(Optimizer):
+    EPS = 1e-6
+
+    def __init__(self, grad):
+        self.grad = grad
+
+    def run(self, data, niter, xinit, step, reg, show=False, only_diag=False, verbose=True):
+        self.init_run(xinit, show)
+        n = xinit.shape[0]
+        xsol = np.copy(xinit)
+        hg = np.zeros_like(xsol)
+        for it in range(niter):
+            if verbose:
+                util.dot()
+            g = self.grad(xsol, data)
+            hg += np.square(g)
+            shg = np.sqrt(hg)
+            sreg = step*reg / (self.EPS+shg)
+            xsol += step*g / (self.EPS+shg)
+            xvec = util.mat2vec(xsol)
+            rvec = util.mat2vec(sreg)
+            if only_diag:
+                xvec[n:] = 0
+            else:
+                xvec[n:] = np.sign(xvec[n:]) * np.clip(np.abs(xvec[n:]) - rvec[n:], 0, None)
+            xsol = util.vec2mat(xvec, n)
+            # Check termination
+            if self.check_term(it, xsol):
+                break
+            # Plot stuff
+            self.plot(it, show, data, xsol)
 
         #lik = diff.loglik_data_full(xsol, data)
         #print('log-lik =', lik[0])
@@ -90,6 +149,7 @@ class Optimizer:
 
 def learn(data, **kwargs):
     niter = kwargs.get('niter', 1000)
+    step = kwargs.get('step', 0.1)
     reg = kwargs.get('reg', 26)
     exact = kwargs.get('exact', False)
     nsamples = kwargs.get('nsamples', 50)
@@ -97,24 +157,55 @@ def learn(data, **kwargs):
     init_theta = kwargs.get('init_theta', None)
 
     if exact:
-        opt = Optimizer(lambda t, x: diff.loglik_data_full(t, x)[1])
+        opt = AdaOptimizer(lambda t, x: diff.loglik_data_full(t, x)[1])
     else:
-        opt = Optimizer(lambda t, x: diff.loglik_data(t, x, nsamples))
+        opt = AdaOptimizer(lambda t, x: diff.loglik_data(t, x, nsamples))
 
     if init_theta is None:
-        init_theta = np.random.uniform(-5, 5, (data.nitems, data.nitems))
-        # XXX
-        for i in range(init_theta.shape[0]):
-            for j in range(init_theta.shape[1]):
-                if i != j and not (i in [0, 1] and j in [0, 1]):
-                    init_theta[i, j] = 0
-        init_theta[0, 0] = 0
-        #
+        init_theta = np.random.uniform(-2, 2, (data.nitems, data.nitems))
     elif init_theta == 'diag':
         th = np.zeros((data.nitems, data.nitems))
-        init_theta = opt.run(data, niter=100, reg=10000, xinit=th, only_diag=True)
-    theta = opt.run(data, niter=niter, reg=reg, xinit=init_theta, show=show)
+        init_theta = opt.run(data, niter=100, step=step, reg=0, xinit=th, only_diag=True, show=show)
+    theta = opt.run(data, niter=niter, step=step, reg=reg, xinit=init_theta, show=show)
     return theta
+
+
+def recover_one(args, size, it):
+    truetheta = np.array([
+        [0,   3],
+        [0,   -3]
+    ])
+
+    print(size, '--', it)
+    data, _ = get_data(it)
+    data = data.subset(list(range(2+size)))
+    theta = learn(data, show=args.show, niter=15000, step=1.0, reg=0.01, exact=False, nsamples=50)#, init_theta='diag')
+    #plt.gca().clear()
+    #plot_mat(theta, plt.gca(), labels=data.labels, full=True)
+    #plt.savefig(f'figs/fig_{size}_{it}.png')
+    theta = theta[np.ix_([0, 1], [0, 1])]
+    dif = np.sum(np.abs(theta-truetheta))
+    print('==>', size, '--', it, '-- dif =', dif)
+    return dif
+
+
+def recover_multi(args):
+    sizes = [20]
+    niters = 5
+
+    #iters = [9, 17, 20, 23, 30, 34, 38, 42, 47, 50, 51, 54, 67, 68, 76]
+    iters = range(niters)
+    difs = joblib.Parallel(n_jobs=5)(joblib.delayed(recover_one)(args, size, it)
+                                     for size in sizes
+                                     for it in iters)
+    difs = np.asarray(difs)
+    print(difs.shape)
+    difs = difs.reshape((len(sizes), -1))
+    print(difs)
+    meandifs = np.mean(difs, axis=1)
+    plt.gca().clear()
+    plt.plot(sizes, meandifs, '-o')
+    plt.show()
 
 
 def get_data():
@@ -205,136 +296,6 @@ def run_multi():
     plt.show()
 
 
-def stats(theta, nsamples):
-    import base
-    lst = base.get_samples(theta, nsamples)
-
-    #seq = base.get_samples(theta, nsamples, seq=True)
-    #tot01 = len([x for x in seq if 0 in x[-1] and 1 in x[-1]])
-    #s01 = len([x for x in seq if 0 in x[-1] and 1 in x[-1] and x[-1].index(0) < x[-1].index(1)]) / tot01
-    #s10 = len([x for x in seq if 0 in x[-1] and 1 in x[-1] and x[-1].index(1) < x[-1].index(0)]) / tot01
-    #print(f'0 -> 1: {s01}')
-    #print(f'1 -> 0: {s10}')
-
-    me = len([x for x in lst if x == []]) / nsamples
-    p0 = len([x for x in lst if x == [0]]) / nsamples
-    p1 = len([x for x in lst if x == [1]]) / nsamples
-    p2 = len([x for x in lst if x == [2]]) / nsamples
-    m0 = len([x for x in lst if 0 in x]) / nsamples
-    m1 = len([x for x in lst if 1 in x]) / nsamples
-    m2 = len([x for x in lst if 2 in x]) / nsamples
-    m01 = len([x for x in lst if 0 in x and 1 in x]) / nsamples
-    p01 = len([x for x in lst if set(x) == set([0, 1])]) / nsamples
-    p02 = len([x for x in lst if set(x) == set([0, 2])]) / nsamples
-    p12 = len([x for x in lst if set(x) == set([1, 2])]) / nsamples
-    print(f'm([]) = {me}')
-    print(f'm(0) = {m0}')
-    print(f'm(1) = {m1}')
-    print(f'm(01) = {m01}')
-    print(f'm(r) = {m2}')
-    print(f'p(0) = {p0}')
-    print(f'p(2) = {p2}')
-    print(f'p(01) = {p01}')
-
-    l1 = p0 / me
-    l2 = p2 / me
-    l3 = p01 / p0
-
-    t22 = p2 / (me * (me + p2))
-    a = l3 * (1 + t22)
-    t00 = (t22 / l2) - 1
-    print(f't22 = {np.log(t22)}')
-    print(f'a   = {np.log(a)}')
-    print(f't00 = {np.log(t00)}')
-
-    #t00 = t22*p0*(p0+p02)/(me-p0*p2)
-    #t00 = p0*t22*(1-me*t22)*(p02+p0) / (me*(p02-me*p02*t22-me*p0*t22))
-    #t11 = p1*t22*(1-me*t22)*(p12+p1) / (me*(p12-me*p12*t22-me*p1*t22))
-    #print(t11)
-    #print(f't00(full) = {np.log(t00)}')
-    #print(f't11(full) = {np.log(t11)}')
-
-    r0 = [len(set(x) - set([0, 1])) for x in lst if 0 in x]
-    r1 = [len(set(x) - set([0, 1])) for x in lst if 1 in x]
-
-    plt.hist([r0, r1], bins=50, density=True)
-    plt.show()
-
-
-def recover():
-    if True:
-        theta = np.array([
-            [0,   10],
-            [0,   -10]])
-    else:
-        theta = np.array([
-            [-1.6,   0],
-            [10,   -1.9]])
-
-    nrest = 1
-    trest = -1*np.eye(nrest)
-    theta = np.block([[theta, np.zeros((2, nrest))],
-                      [np.zeros((nrest, 2)), trest]])
-    print(theta)
-    stats(theta, 10000)
-
-    if False:
-        import base
-        import pickle
-        #lst = base.get_samples(theta, 2000)
-        xs, ps = get_dist(theta)
-        #xs = list(util.powerset(range(2+nrest)))
-        #ps = base.pt(theta)
-        lst = np.random.choice(xs, 1000, replace=True, p=ps)
-        with open('data.pcl', 'wb') as fout:
-            pickle.dump(lst, fout)
-    else:
-        import pickle
-        with open('data_contour.pcl', 'rb') as fin:
-            lst = pickle.load(fin)
-    data = datasets.Data.from_list([lst], nitems=2+nrest)
-
-    lik = diff.loglik_data_full(theta, data)[0]
-    print(f'Log-lik (true) = {lik}')
-    
-    th = learn(data, show=True, niter=20000, reg=3.1, exact=True)
-    print(th)
-    with open('th.pcl', 'wb') as fout:
-        pickle.dump(th, fout)
-    lik = diff.loglik_data_full(th, data)[0]
-    print(f'===> Log-lik (est) = {lik}')
-    stats(th, 10000)
-
-
-def check_liks():
-    t1 = np.array([
-        [-1, 10,  0],
-        [0,  -10, 0],
-        [0,  0,  -1]
-    ])
-    t2 = np.array([
-        [-1.428, 0,  0],
-        [4.977,  -1.8128, 0],
-        [0,  0,  -1.07]
-    ])
-
-    import base
-    lst = base.get_samples(t1, 100000)
-    data = datasets.Data.from_list([lst], nitems=3)
-    lik1 = diff.loglik_data_full(t1, data)[0]
-    lik2 = diff.loglik_data_full(t2, data)[0]
-    print(f'L1 = {lik1}, L2 = {lik2}')
-
-
-def check_extra(data, genes):
-    idxs = data.idx(genes)
-    r0 = [len(set(x) - set(idxs)) for x in data if idxs[0] in x]
-    r1 = [len(set(x) - set(idxs)) for x in data if idxs[1] in x]
-
-    plt.hist([r0, r1], bins=100, density=True, label=genes)
-    plt.legend()
-    plt.show()
-
 
 def get_dist(theta):
     n = theta.shape[0]
@@ -358,81 +319,7 @@ def plot_dist(xs, ps):
     plt.show()
 
 
-def dists3():
-    t1 = np.array([
-        [0, 10, 0],
-        [0,  -10, 0],
-        [0,  0, -1]
-    ])
-    t2 = np.array([
-        [0.0544, 3, 0],
-        [0,  -3.133, 0],
-        [0,  0, -0.9487]
-    ])
-    t3 = np.array([
-        [-0.272, 0, 0],
-        [3,  -1.06, 0],
-        [0,  0, -0.945]
-    ])
-    xs, p1 = get_dist(t1)
-    print('p1 =', p1)
-    xs, p2 = get_dist(t2)
-    xs, p3 = get_dist(t3)
-
-    d1 = 0.5*np.sum(np.abs(p1-p2))
-    d2 = 0.5*np.sum(np.abs(p1-p3))
-    print(f'TV1 = {d1} | TV2 = {d2}')
-    plot_dist(xs, [p1, p2, p3])    
-
-
-def dists(nrest):
-    t1 = np.array([
-        [0,   10],
-        [0,   -10]])
-    trest = -1*np.eye(nrest)
-    t1 = np.block([[t1, np.zeros((2, nrest))],
-                   [np.zeros((nrest, 2)), trest]])
-    with open('t2.pcl', 'rb') as fin:
-        t2 = pickle.load(fin)
-    with open('t3.pcl', 'rb') as fin:
-        t3 = pickle.load(fin)
-
-    with open('data.pcl', 'rb') as fin:
-        lst = pickle.load(fin)
-    data = datasets.Data.from_list([lst], nitems=2+nrest)
-
-    lik = diff.loglik_data_full(t1, data)[0]
-    print(f'Log-lik (1) = {lik}')
-    lik = diff.loglik_data_full(t2, data)[0]
-    print(f'Log-lik (2) = {lik}')
-    lik = diff.loglik_data_full(t3, data)[0]
-    print(f'Log-lik (3) = {lik}')
-    
-    xs, p1 = get_dist(t1)
-    xs, p2 = get_dist(t2)
-    xs, p3 = get_dist(t3)
-
-    d1 = 0.5*np.sum(np.abs(p1-p2))
-    d2 = 0.5*np.sum(np.abs(p1-p3))
-    print(f'TV1 = {d1} | TV2 = {d2}')
-    #plot_dist(xs, [p1, p2, p3])
-
-
-def flik_2(x, data, nrest):
-    theta = np.array([
-        [0, x[0]],
-        [x[1], -x[0]]
-    ])
-    trest = -1*np.eye(nrest)
-    theta = np.block([[theta, np.zeros((2, nrest))],
-                      [np.zeros((nrest, 2)), trest]])
-
-    lik = diff.loglik_data_full(theta, data)
-    lik -= 0.03 * (np.abs(x[0]) + np.abs(x[1]))
-    return -lik[0]
-
-
-def flik_3_new(x, data, reg):
+def flik_3_new(x, data, times, reg):
     nrest = data.nitems-2
     theta = np.array([
         [0, x[1]],
@@ -442,12 +329,13 @@ def flik_3_new(x, data, reg):
     theta = np.block([[theta, np.zeros((2, nrest))],
                       [np.zeros((nrest, 2)), trest]])
 
-    lik = diff.loglik_data_full(theta, data)[0]
-    lik -= reg * (np.abs(x[1]) + np.abs(x[2]))
+    #lik = diff.loglik_data_full(theta, data)[0]
+    lik, _ = tdiff.loglik(x, data, times)
+    lik = -lik - reg * (np.abs(x[1]) + np.abs(x[2]))
     return lik
 
 
-def get_lik_new(data, ngrid, reg):
+def get_lik_new(data, times, ngrid, reg):
     lo, hi = -10, 10
     t0, t1, t2 = np.meshgrid(np.linspace(-5, -1, ngrid),
                              np.linspace(0, 4, ngrid),
@@ -459,7 +347,7 @@ def get_lik_new(data, ngrid, reg):
         for j in range(ngrid):
             for k in range(ngrid):
                 ts = [t0[i, j, k], t1[i, j, k], t2[i, j, k]]
-                lik[i, j, k] = flik_3_new(ts, data, reg)
+                lik[i, j, k] = flik_3_new(ts, data, times, reg)
 
     x12 = t1[0, :, :]
     y12 = t2[0, :, :]
@@ -546,17 +434,29 @@ def sample_data(xs, ps, nrest, ndata):
 def save_lik(x, g, fx, *args, **kwargs):
     sav = kwargs.get('sav')
     gsav = kwargs.get('gsav')
-    #print('x->', x)
-    #print('g->', g)
+    #print('f(x) ->', fx)
+    #print('g ->', g)
     sav.append(x.copy())
     gsav.append(g.copy())
 
 
+from cpp import tdiff
+def tdiff_wrapper(x, g, data, times):
+    val, grad = tdiff.loglik(x, data, times)
+    for i in range(4):
+        g[i] = grad[i]
+    return val
+
+
 def max_flik_full(data, reg, times=None):
     import scipy.optimize
-    fun = lambda x, g: flik_full(x, g, data, times)
+    #fun = lambda x, g: flik_full(x, g, data, times)
+    #import tmp
+    #fun = tmp.likfun(data, times)
+    fun = lambda x, g: tdiff_wrapper(x, g, data, times)
+
     x0 = np.random.uniform(-2, 2, 4)
-    #x0 = np.array([-2.48745317, 2.41311082, 0.87718485])# + np.random.uniform(-0.5, 0.5, 3)
+    #x0 = np.array([0, -3, 3, 0]) + np.random.uniform(-1, 1, 4)
 
     sav = [x0.copy()]
     gsav = []
@@ -581,17 +481,17 @@ def max_flik_full(data, reg, times=None):
         val = -flik_full(sol, None, data, times) - reg*(np.abs(sol[2]) + np.abs(sol[3]))
     else:
         sol = lbfgs.fmin_lbfgs(fun, x0=x0, epsilon=1e-8,
-                               progress=lambda *args: save_lik(*args, sav=sav))
+                               progress=lambda *args: save_lik(*args, sav=sav, gsav=gsav))
         val = -flik_full(sol, None, data, times)
     return sol, val, (sav, gsav)
 
 
 def get_theta(nrest):
     theta = np.array([
-        [0,   5],
-        [0,   -5]
+        [0,   3],
+        [0,   -3]
     ])
-    trest = 0*np.eye(nrest)
+    trest = -2*np.eye(nrest)
     theta = np.block([[theta, np.zeros((2, nrest))],
                       [np.zeros((nrest, 2)), trest]])
     return theta
@@ -615,24 +515,31 @@ def get_data(i):
 def plot_max2():
     reg = 0.01
 
-    nreps = 200
-    ndata = 2000
-    nrest = 7
+    nreps = 100
+    ndata = 1000
+    nrest = 100
     
     res = []
     vals = []
     savs = []
     gsavs = []
+    difs = []
 
     if False:
         import os, shutil
         shutil.rmtree('synth', ignore_errors=True)
         os.mkdir('synth')
         save_data(nreps, ndata, nrest)
-    
-    for i in range(nreps):
+
+    truetheta = np.array([
+        [0,   3],
+        [0,   -3]
+    ])
+
+    for i in range(nreps):#[34]: #9, 17, 20, 23, 30, 34, 38, 42, 47, 50, 51, 54, 67, 68, 76]:
         data, times = get_data(i)
-        data = data.subset([0, 1, 2, 3])
+        data = data.subset([0, 1])
+
         #import base
         #lst = base.get_samples(theta, ndata)
 
@@ -641,9 +548,17 @@ def plot_max2():
 
         print(f'{i} | val = {val}')
         res.append(r)
+        theta = np.array([
+            [r[0], r[2]],
+            [r[3], r[1]]
+        ])
+        dif = np.sum(np.abs(theta-truetheta))
+        difs.append(dif)
         vals.append(val)
         savs.append(sav)
         gsavs.append(gsav)
+
+    print('meandif =', np.mean(difs))
 
     maxval = np.max(vals)
     minval = np.min(vals)
@@ -652,16 +567,16 @@ def plot_max2():
     t0 = [r[0] for r in res]
     t1 = [r[1] for r in res]
     t2 = [r[2] for r in res]
-    t3 = [r[3] for r in res]
+    t3 = [r[3] for r in res]    
 
     fig, ax = plt.subplots(2, 2, figsize=(12, 9))
     fig.tight_layout()
 
     if False:
-        res12, res02, res10 = get_lik_new(data, ngrid=30, reg=reg)
+        res12, res02, res10 = get_lik_new(data, times, ngrid=10, reg=reg)
 
         lik = res12[2]
-        levels = np.linspace(-np.min(lik)-0.05, -np.min(lik), 60)
+        levels = np.linspace(-np.min(lik)-2, -np.min(lik), 60)
 
         ax[0, 0].contourf(res12[0], res12[1], -res12[2], levels=levels, cmap='bone')
         ax[0, 1].contourf(res02[0], res02[1], -res02[2], levels=levels, cmap='bone')
@@ -684,8 +599,8 @@ def plot_max2():
     ax[0, 1].plot(theta[1, 1], theta[1, 0], 'rx')
     ax[1, 0].scatter(t2, t1, c=cs, alpha=0.5)
     ax[1, 0].plot(theta[0, 1], theta[1, 1], 'rx')
-    ax[1, 1].scatter(t0, t3, c=cs, alpha=0.5)
-    ax[1, 1].plot(theta[0, 0], theta[1, 0], 'rx')
+    ax[1, 1].scatter(t0, t1, c=cs, alpha=0.5)
+    ax[1, 1].plot(theta[0, 0], theta[1, 1], 'rx')
     for i in range(2):
         for j in range(2):
             ax[i, j].set_xlim((-20, 20))
@@ -698,12 +613,16 @@ def plot_max2():
 
 
 if __name__ == '__main__':
-    #recover()
-    #plot_lik()
-    #plot_max()
-    plot_max2()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--show', action='store_true')
+    parser.add_argument('--plot', action='store_true')
+    parser.add_argument('--rec', action='store_true')
+    parser.add_argument('--recall', action='store_true')
+    args = parser.parse_args()
+    if args.rec:
+        recover_one(args, 50, 34)
+    elif args.recall:
+        recover_multi(args)
+    elif args.plot:
+        plot_max2()
 
-    #data = get_data()
-    #print(data)
-    #check_extra(data, ['CDK4(A)', 'MDM2(A)'])
-    #check_liks()

@@ -55,34 +55,43 @@ def draw_one_old(th, time=False):
             break
         else:
             res.append(next)
-    return tuple(res)
+    if time:
+        return tuple(res), None
+    else:
+        return tuple(res)
 
 
 def draw_one(th, time=False):
     ground = set(range(th.shape[0]))
+    # XXX
     tstop = np.random.exponential(1.0)
+    #tstop = 0.1
+    #coin = np.random.random()
+    #if coin < 0.5:
+    #    tstop = 1
+    #else:
+    #    tstop = 2
     res = []
     tcur = 0
     while True:
-        sumth = []
         rest = list(ground - set(res))
         if rest == []:
             break
-        for j in rest:
-            sumth.append(th[j, j] + sum(th[i, j] for i in res))
-        sumth = np.asarray(sumth + [0])
+        sumth = np.array([th[j, j] + sum(th[i, j] for i in res)
+                          for j in rest])
         lse = scipy.special.logsumexp(sumth)
         dt = np.random.exponential(1.0/np.exp(lse))
         tcur += dt
         if tcur > tstop:
             break
         ps = np.exp(sumth - lse)
-        next = np.random.choice(rest + [-1], 1, p=ps)[0]
+        #print(f'res = {res}, rest = {rest}, ps = {ps}')
+        next = np.random.choice(rest, 1, p=ps)[0]
         res.append(next)
     if time:
-        return tuple(res), tstop
+        return res, tstop
     else:
-        return tuple(res)
+        return res
 
 
 def draw(th, nsamples=None, time=False):
@@ -98,35 +107,20 @@ def draw(th, nsamples=None, time=False):
 
 
 if __name__ == '__main__':
-    q1 = 0.5
-    q2 = 0.01
-    q12 = 50
-    q21 = 1
-    qs = (q1, q2, q12, q21)
-    p = probs(qs)
-    print(f'p = {p}')
+    theta = np.array([
+        [0, 5],
+        [0, -5]
+    ])
+    ndata = 10000
+    data = draw(theta, ndata)
+    p0 = len([d for d in data if d == []]) / ndata
+    p1 = len([d for d in data if d == [0]]) / ndata
+    p2 = len([d for d in data if d == [1]]) / ndata
+    p12 = len([d for d in data if d == [0, 1]]) / ndata
+    p21 = len([d for d in data if d == [1, 0]]) / ndata
 
-    nsamples = 10000
-    samples = [draw(mat(qs)) for i in range(nsamples)]
-    #samples = [s[-1] for s in samples]
-    counter = collections.Counter(samples)
-    for s in counter:
-        counter[s] /= nsamples
-    print(counter)
-
-
-    q1 = 0.38
-    q2 = 0.13
-    q12 = 1
-    q21 = 50
-    qs = (q1, q2, q12, q21)
-    p = probs((q1, q2, q12, q21))
-    print(f'p = {p}')
-
-    nsamples = 10000
-    samples = [draw(mat(qs)) for i in range(nsamples)]
-    #samples = [s[-1] for s in samples]
-    counter = collections.Counter(samples)
-    for s in counter:
-        counter[s] /= nsamples
-    print(counter)
+    print(f'p0 = {p0}')
+    print(f'p1 = {p1}')
+    print(f'p2 = {p2}')
+    print(f'p12 = {p12}')
+    print(f'p21 = {p21}')

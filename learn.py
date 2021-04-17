@@ -171,13 +171,10 @@ def learn(data, **kwargs):
 
 
 def recover_one(args, size, it):
-    truetheta = np.array([
-        [0,   3],
-        [0,   -3]
-    ])
-
     print(size, '--', it)
-    data, _ = get_data(it)
+    data, _, truetheta = get_data(it)
+    truetheta = truetheta[np.ix_([0, 1], [0, 1])]
+    print(truetheta)
     data = data.subset(list(range(2+size)))
     theta = learn(data, show=args.show, niter=15000, step=1.0, reg=0.01, exact=False, nsamples=50)#, init_theta='diag')
     #plt.gca().clear()
@@ -202,6 +199,8 @@ def recover_multi(args):
     print(difs.shape)
     difs = difs.reshape((len(sizes), -1))
     print(difs)
+    with open('difs.pcl', 'wb') as fout:
+        pickle.dump(difs, fout)
     meandifs = np.mean(difs, axis=1)
     plt.gca().clear()
     plt.plot(sizes, meandifs, '-o')
@@ -491,7 +490,10 @@ def get_theta(nrest):
         [0,   3],
         [0,   -3]
     ])
-    trest = -2*np.eye(nrest)
+    tind = np.random.uniform(-3, 0, nrest)
+    #trest = -2*np.eye(nrest)
+    trest = np.diag(tind)
+    print(trest)
     theta = np.block([[theta, np.zeros((2, nrest))],
                       [np.zeros((nrest, 2)), trest]])
     return theta
@@ -502,14 +504,14 @@ def save_data(nreps, ndata, nrest):
     for i in range(nreps):
         lst, times = sim.draw(theta, ndata, time=True)
         with open(f'synth/data_{i}.pcl', 'wb') as fout:
-            pickle.dump((lst, times, 2+nrest), fout)
+            pickle.dump((lst, times, 2+nrest, theta), fout)
 
 
 def get_data(i):
     with open(f'synth/data_{i}.pcl', 'rb') as fin:
-        lst, times, nitems = pickle.load(fin)
+        lst, times, nitems, true = pickle.load(fin)
     data = datasets.Data.from_list([lst], nitems=nitems)
-    return data, times
+    return data, times, true
 
 
 def plot_max2():
@@ -525,7 +527,7 @@ def plot_max2():
     gsavs = []
     difs = []
 
-    if False:
+    if True:
         import os, shutil
         shutil.rmtree('synth', ignore_errors=True)
         os.mkdir('synth')
@@ -536,8 +538,8 @@ def plot_max2():
         [0,   -3]
     ])
 
-    for i in range(nreps):#[34]: #9, 17, 20, 23, 30, 34, 38, 42, 47, 50, 51, 54, 67, 68, 76]:
-        data, times = get_data(i)
+    for i in range(nreps):#[30]: #9, 17, 20, 23, 30, 34, 38, 42, 47, 50, 51, 54, 67, 68, 76]:
+        data, times, _ = get_data(i)
         data = data.subset([0, 1])
 
         #import base
@@ -620,7 +622,8 @@ if __name__ == '__main__':
     parser.add_argument('--recall', action='store_true')
     args = parser.parse_args()
     if args.rec:
-        recover_one(args, 50, 34)
+        #iters = [9, 17, 20, 23, 30, 34, 38, 42, 47, 50, 51, 54, 67, 68, 76]
+        recover_one(args, 20, 30)
     elif args.recall:
         recover_multi(args)
     elif args.plot:

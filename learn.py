@@ -174,6 +174,7 @@ def recover_one(args, size, it):
     print(size, '--', it)
     data, _, truetheta = get_data(it)
     truetheta = truetheta[np.ix_([0, 1], [0, 1])]
+    truetheta = truetheta / np.sum(np.abs(truetheta))
     print(truetheta)
     data = data.subset(list(range(2+size)))
     theta = learn(data, show=args.show, niter=15000, step=1.0, reg=0.01, exact=False, nsamples=50)#, init_theta='diag')
@@ -181,26 +182,27 @@ def recover_one(args, size, it):
     #plot_mat(theta, plt.gca(), labels=data.labels, full=True)
     #plt.savefig(f'figs/fig_{size}_{it}.png')
     theta = theta[np.ix_([0, 1], [0, 1])]
+    theta = theta / np.sum(np.abs(theta))
     dif = np.sum(np.abs(theta-truetheta))
     print('==>', size, '--', it, '-- dif =', dif)
     return dif
 
 
 def recover_multi(args):
-    sizes = [20]
-    niters = 5
+    sizes = [25]
+    niters = 20
 
     #iters = [9, 17, 20, 23, 30, 34, 38, 42, 47, 50, 51, 54, 67, 68, 76]
     iters = range(niters)
-    difs = joblib.Parallel(n_jobs=5)(joblib.delayed(recover_one)(args, size, it)
-                                     for size in sizes
-                                     for it in iters)
+    difs = joblib.Parallel(n_jobs=20)(joblib.delayed(recover_one)(args, size, it)
+                                      for size in sizes
+                                      for it in iters)
     difs = np.asarray(difs)
     print(difs.shape)
     difs = difs.reshape((len(sizes), -1))
     print(difs)
     with open('difs.pcl', 'wb') as fout:
-        pickle.dump(difs, fout)
+        pickle.dump((sizes, difs), fout)
     meandifs = np.mean(difs, axis=1)
     plt.gca().clear()
     plt.plot(sizes, meandifs, '-o')
@@ -518,7 +520,7 @@ def plot_max2():
     reg = 0.01
 
     nreps = 100
-    ndata = 1000
+    ndata = 500
     nrest = 100
     
     res = []
@@ -527,19 +529,16 @@ def plot_max2():
     gsavs = []
     difs = []
 
-    if True:
+    if False:
         import os, shutil
         shutil.rmtree('synth', ignore_errors=True)
         os.mkdir('synth')
         save_data(nreps, ndata, nrest)
 
-    truetheta = np.array([
-        [0,   3],
-        [0,   -3]
-    ])
-
-    for i in range(nreps):#[30]: #9, 17, 20, 23, 30, 34, 38, 42, 47, 50, 51, 54, 67, 68, 76]:
-        data, times, _ = get_data(i)
+    for i in range(20):
+        data, times, truetheta = get_data(i)
+        truetheta = truetheta[np.ix_([0, 1], [0, 1])]
+        truetheta = truetheta / np.sum(np.abs(truetheta))
         data = data.subset([0, 1])
 
         #import base
@@ -554,6 +553,7 @@ def plot_max2():
             [r[0], r[2]],
             [r[3], r[1]]
         ])
+        theta = theta / np.sum(np.abs(theta))
         dif = np.sum(np.abs(theta-truetheta))
         difs.append(dif)
         vals.append(val)
@@ -623,7 +623,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
     if args.rec:
         #iters = [9, 17, 20, 23, 30, 34, 38, 42, 47, 50, 51, 54, 67, 68, 76]
-        recover_one(args, 20, 30)
+        recover_one(args, 60, 7)
     elif args.recall:
         recover_multi(args)
     elif args.plot:

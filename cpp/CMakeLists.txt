@@ -12,8 +12,6 @@ target_include_directories(diff PRIVATE eigen)
 target_compile_options(diff PRIVATE -fopenmp -ffast-math -O3)
 target_link_libraries(diff PRIVATE -fopenmp -ffast-math -O3)
 
-
-message(${CMAKE_CXX_FLAGS})
 pybind11_add_module(tdiff tdiff.cpp)
 target_include_directories(tdiff PRIVATE autodiff eigen)
 target_compile_options(tdiff PRIVATE -fopenmp -ffast-math -O3 -std=c++17)

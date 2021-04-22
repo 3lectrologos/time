@@ -116,14 +116,16 @@ def get_samples(theta, nsamples, seq=False):
     return samples
 
 
-def sample_stat(x, nsamples, seq=False):
-    samples = get_samples(x, nsamples, seq)
-    samples = [frozenset(s) for s in samples]
+def stats(data, seq=False):
+    if seq:
+        samples = [tuple(s) for s in data]
+    else:
+        samples = [frozenset(s) for s in data]
     counter = collections.Counter(samples)
     for s in counter:
-        counter[s] /= nsamples
-    for key in sorted([sorted(list(key)) for key in counter.keys()]):
-        print(key, ':', counter[frozenset(key)])
+        counter[s] /= len(data)
+    for key in counter.keys():
+        print(key, ':', counter[key])
 
 
 if __name__ == '__main__':

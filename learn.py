@@ -281,6 +281,7 @@ def recover_multi(args):
     with open('difs.pcl', 'wb') as fout:
         pickle.dump((sizes, difs), fout)
     meandifs = np.mean(difs, axis=1)
+    print('meandifs =', meandifs)
     plt.gca().clear()
     plt.plot(sizes, meandifs, '-o')
     plt.show()

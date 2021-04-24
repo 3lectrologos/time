@@ -263,7 +263,7 @@ Eigen::MatrixXd loglik_data(const Eigen::MatrixXd& theta, const std::vector<seq_
     } else {
       time = times[i];
     }
-    if (data[i].size() < 5) {
+    if (data[i].size() < 6) {
       grad += loglik_set_full(theta, data[i], time).second;
     } else {
       grad += loglik_set(theta, data[i], nperms, time).second;

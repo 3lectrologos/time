@@ -13,6 +13,9 @@ from cpp import diff
 
 def plot_mat(theta, ax, labels, full=False, thresh=0.1):
     n = theta.shape[0]
+    if n > 50:
+        print('Warning: n > 50, plotting only first 50 items')
+        n = 50
     mat = np.abs(theta)
     if not full:
         np.fill_diagonal(mat, 0)
@@ -161,7 +164,7 @@ class NAGOptimizer(Optimizer):
             xsol += step*g
             mom = self.GAMMA*mom + step*g
             # L1-projection
-            xsol = self.reg_Lp(xsol, 0.03, 0.75)
+            xsol = self.reg_Lp(xsol, 0.01, 0.2)
             #xsol = self.reg_L1(xsol, 3)
             # Check termination
             #if self.check_term(it, xsol):
@@ -236,21 +239,23 @@ def learn(data, **kwargs):
         init_theta = np.random.uniform(-0.1, 0.1, (data.nitems, data.nitems))
     elif init_theta == 'diag':
         th = np.zeros((data.nitems, data.nitems))
-        print(step)
-        init_theta = opt.run(data, niter=200, step=2, reg=0, xinit=th, only_diag=True, show=show)
+        init_theta = opt.run(data, niter=101, step=1, reg=0, xinit=th, only_diag=True, show=show)
+        th = np.random.uniform(-0.1, 0.1, (data.nitems, data.nitems))
+        np.fill_diagonal(th, 0)
+        init_theta += th
     theta = opt.run(data, niter=niter, step=step, reg=reg, xinit=init_theta, show=show)
     return theta
 
 
-def recover_one(args, size, it, ndep):
+def recover_one(args, size, it):
     print(size, '--', it)
-    data, _, truetheta = get_data(it)
+    data, _, truetheta, ndep = get_data(it)
     deplist = list(range(ndep))
     truetheta = truetheta[np.ix_(deplist, deplist)]
     truetheta = truetheta / np.sum(np.abs(truetheta))
     print(truetheta)
     data = data.subset(list(range(ndep+size)))
-    theta = learn(data, show=args.show, niter=3000, step=1.0, reg=0.01, exact=False, nsamples=50)#, init_theta='diag')
+    theta = learn(data, show=args.show, niter=1500, step=1.0, reg=0.005, exact=False, nsamples=500, init_theta='diag')
     #plt.gca().clear()
     #plot_mat(theta, plt.gca(), labels=data.labels, full=True)
     #plt.savefig(f'figs/fig_{size}_{it}.png')
@@ -261,12 +266,12 @@ def recover_one(args, size, it, ndep):
     return dif
 
 
-def recover_multi(args, ndep):
-    sizes = [0, 2, 4]
-    niters = 100
+def recover_multi(args):
+    sizes = [0, 2, 4, 6]
+    niters = 19
 
     iters = range(niters)
-    difs = joblib.Parallel(n_jobs=20)(joblib.delayed(recover_one)(args, size, it, ndep)
+    difs = joblib.Parallel(n_jobs=19)(joblib.delayed(recover_one)(args, size, it)
                                       for size in sizes
                                       for it in iters)
     difs = np.asarray(difs)
@@ -562,10 +567,10 @@ def max_flik_full(data, reg, times=None):
 
 
 def get_theta(nrest):
-    #theta = np.array([
-    #    [0,   3],
-    #    [0,   -3]
-    #])
+    theta = np.array([
+        [0,   3],
+        [0,   -3]
+    ])
 
     #theta = 3.0*np.array([
     #    [0, 1, 0, 0],
@@ -574,11 +579,25 @@ def get_theta(nrest):
     #    [0, 0, 0, -1]
     #])
 
-    theta = 6.0*np.array([
-        [0.2, 0.5, 0.5],
-        [0, -0.5, -0.5],
-        [0, -0.5, -0.5],
-    ])
+    #theta = 3.0*np.array([
+    #    [0, 1, 1],
+    #    [0, -1, 0],
+    #    [0, 0, -1],
+    #])
+
+    #theta = 3.0*np.array([
+    #    [0, 1, 0],
+    #    [0, -1, 1],
+    #    [0, 0, -1],
+    #])
+
+    #theta = np.zeros((5, 5))
+    #edges = [(i, j) for i in range(5) for j in range(5) if i != j]
+    #idxs = np.random.choice(list(range(len(edges))), 5, replace=False)
+    #for i in idxs:
+    #    val = np.random.uniform(-3, 3)
+    #    theta[edges[i][0], edges[i][1]] = val
+    #print(theta)
 
     ndep = theta.shape[0]
     tind = np.random.uniform(-3, 0, nrest)
@@ -594,23 +613,22 @@ def save_data(nreps, ndata, nrest):
     for i in range(nreps):
         lst, times = sim.draw(theta, ndata, time=True)
         with open(f'synth/data_{i}.pcl', 'wb') as fout:
-            pickle.dump((lst, times, ndep+nrest, theta), fout)
+            pickle.dump((lst, times, ndep, nrest, theta), fout)
 
 
 def get_data(i):
     with open(f'synth/data_{i}.pcl', 'rb') as fin:
-        lst, times, nitems, true = pickle.load(fin)
-    data = datasets.Data.from_list([lst], nitems=nitems)
-    return data, times, true
+        lst, times, ndep, nrest, true = pickle.load(fin)
+    data = datasets.Data.from_list([lst], nitems=ndep+nrest)
+    return data, times, true, ndep
 
 
 def plot_max2():
-    reg = 0.001
+    reg = 0.00001
 
-    nreps = 1
+    nreps = 100
     ndata = 1000
     nrest = 100
-    ndep = 2
     
     res = []
     vals = []
@@ -618,25 +636,26 @@ def plot_max2():
     gsavs = []
     difs = []
 
-    if False:
+    if True:
         import os, shutil
         shutil.rmtree('synth', ignore_errors=True)
         os.mkdir('synth')
         save_data(nreps, ndata, nrest)
 
-    for i in [5]:
-        data, times, truetheta = get_data(i)
+    for i in range(nreps):
+        data, times, truetheta, ndep = get_data(i)
         truetheta = truetheta[np.ix_(list(range(ndep)), list(range(ndep)))]
         truetheta = truetheta / np.sum(np.abs(truetheta))
         data = data.subset(list(range(ndep)))
 
-        t0 = [times[i] for i, d in enumerate(data) if d == [0]]
-        t01 = [times[i] for i, d in enumerate(data) if set(d) == set([0, 1])]
-        t02 = [times[i] for i, d in enumerate(data) if set(d) == set([0, 2])]
-        #plt.hist(t0, alpha=0.3, bins=20)
-        #plt.hist(t01, alpha=0.3, bins=50)
-        #plt.hist(t02, alpha=0.3, bins=50)
-        #plt.show()
+        if False:
+            t0 = [times[i] for i, d in enumerate(data) if d == [0]]
+            t01 = [times[i] for i, d in enumerate(data) if 1 in d and 2 not in d]
+            t02 = [times[i] for i, d in enumerate(data) if 2 in d]
+            plt.hist(t0, alpha=0.3, bins=50, density=True)
+            plt.hist(t01, alpha=0.3, bins=50, density=True)
+            plt.hist(t02, alpha=0.3, bins=50, density=True)
+            plt.show()
 
         #import base
         #lst = base.get_samples(theta, ndata)
@@ -658,9 +677,9 @@ def plot_max2():
 
     print('meandif =', np.mean(difs))
 
-    maxval = np.max(vals)
-    minval = np.min(vals)
-    cs = [min(0.1, maxval-v) for v in vals]
+    # maxval = np.max(vals)
+    # minval = np.min(vals)
+    # cs = [min(0.1, maxval-v) for v in vals]
     
     t0 = [r[0, 0] for r in res]
     t1 = [r[1, 1] for r in res]    
@@ -670,44 +689,51 @@ def plot_max2():
     fig, ax = plt.subplots(2, 2, figsize=(12, 9))
     fig.tight_layout()
 
-    if False:
-        res12, res02, res10 = get_lik_new(data, times, ngrid=10, reg=reg)
+    pairs = [
+        # axis,  i1, j1, i2, j2
+        ([0, 0], [0, 1], [1, 0]),
+        ([0, 1], [0, 2], [2, 0]),
+        ([1, 0], [1, 2], [2, 1]),
+        ([1, 1], [0, 0], [1, 1])
+    ]
 
-        lik = res12[2]
-        levels = np.linspace(-np.min(lik)-2, -np.min(lik), 60)
-
-        ax[0, 0].contourf(res12[0], res12[1], -res12[2], levels=levels, cmap='bone')
-        ax[0, 1].contourf(res02[0], res02[1], -res02[2], levels=levels, cmap='bone')
-        ax[1, 0].contourf(res10[0], res10[1], -res10[2], levels=levels, cmap='bone')
-
-    if False:
-        for i, sav in enumerate(savs):
-            if sav[-1][1] < 2.5:
-                print('GRAD:', gsavs[i][-1])
-                print('SOL:', sav)
-                for i in range(len(sav)-1):
-                    ax[0, 0].plot([sav[i][1], sav[i+1][1]], [sav[i][2], sav[i+1][2]], 'b.-', alpha=0.2)
-                    ax[0, 1].plot([sav[i][0], sav[i+1][0]], [sav[i][2], sav[i+1][2]], 'b.-', alpha=0.2)
-                    ax[1, 0].plot([sav[i][1], sav[i+1][1]], [sav[i][0], sav[i+1][0]], 'b.-', alpha=0.2)
-
-    _, _, truetheta = get_data(0)
-    truetheta = truetheta[np.ix_([0, 1], [0, 1])]
-    ax[0, 0].scatter(t2, t3, c=cs, alpha=0.5)
-    ax[0, 0].plot(truetheta[0, 1], truetheta[1, 0], 'rx')
-    ax[0, 1].scatter(t1, t3, c=cs, alpha=0.5)
-    ax[0, 1].plot(truetheta[1, 1], truetheta[1, 0], 'rx')
-    ax[1, 0].scatter(t2, t1, c=cs, alpha=0.5)
-    ax[1, 0].plot(truetheta[0, 1], truetheta[1, 1], 'rx')
-    ax[1, 1].scatter(t0, t1, c=cs, alpha=0.5)
-    ax[1, 1].plot(truetheta[0, 0], truetheta[1, 1], 'rx')
+    truetheta = get_data(0)[2]
+    truetheta = truetheta[np.ix_(list(range(ndep)), list(range(ndep)))]
+    print(res)
+    for axidx, p1, p2 in pairs:
+        t1 = [r[p1[0], p1[1]] for r in res]
+        t2 = [r[p2[0], p2[1]] for r in res]
+        ax[axidx[0], axidx[1]].scatter(t1, t2, alpha=0.5)
+        ax[axidx[0], axidx[1]].plot(truetheta[p1[0], p1[1]], truetheta[p2[0], p2[1]], 'rx')
     for i in range(2):
         for j in range(2):
             ax[i, j].set_xlim((-20, 20))
             ax[i, j].set_ylim((-20, 20))
-    print(f'Max dif: {maxval-minval}')
-    cnt1 = len([x for x in t3 if -0.1 < x < 0.1])
-    cnt2 = len([x for x in t2 if -0.1 < x < 0.1])
-    print(f'cnt1 = {cnt1}, cnt2 = {cnt2}')
+
+    # if False:
+    #     res12, res02, res10 = get_lik_new(data, times, ngrid=10, reg=reg)
+
+    #     lik = res12[2]
+    #     levels = np.linspace(-np.min(lik)-2, -np.min(lik), 60)
+
+    #     ax[0, 0].contourf(res12[0], res12[1], -res12[2], levels=levels, cmap='bone')
+    #     ax[0, 1].contourf(res02[0], res02[1], -res02[2], levels=levels, cmap='bone')
+    #     ax[1, 0].contourf(res10[0], res10[1], -res10[2], levels=levels, cmap='bone')
+
+    # if False:
+    #     for i, sav in enumerate(savs):
+    #         if sav[-1][1] < 2.5:
+    #             print('GRAD:', gsavs[i][-1])
+    #             print('SOL:', sav)
+    #             for i in range(len(sav)-1):
+    #                 ax[0, 0].plot([sav[i][1], sav[i+1][1]], [sav[i][2], sav[i+1][2]], 'b.-', alpha=0.2)
+    #                 ax[0, 1].plot([sav[i][0], sav[i+1][0]], [sav[i][2], sav[i+1][2]], 'b.-', alpha=0.2)
+    #                 ax[1, 0].plot([sav[i][1], sav[i+1][1]], [sav[i][0], sav[i+1][0]], 'b.-', alpha=0.2)
+
+    #print(f'Max dif: {maxval-minval}')
+    #cnt1 = len([x for x in t3 if -0.1 < x < 0.1])
+    #cnt2 = len([x for x in t2 if -0.1 < x < 0.1])
+    #print(f'cnt1 = {cnt1}, cnt2 = {cnt2}')
     plt.show()
 
 
@@ -719,10 +745,9 @@ if __name__ == '__main__':
     parser.add_argument('--recall', action='store_true')
     args = parser.parse_args()
     if args.rec:
-        #iters = [9, 17, 20, 23, 30, 34, 38, 42, 47, 50, 51, 54, 67, 68, 76]
-        recover_one(args, int(args.rec[0]), int(args.rec[1]), ndep=2)
+        recover_one(args, int(args.rec[0]), int(args.rec[1]))
     elif args.recall:
-        recover_multi(args, ndep=2)
+        recover_multi(args)
     elif args.plot:
         plot_max2()
 

@@ -254,7 +254,8 @@ def recover_one(args, size, it):
     truetheta = truetheta[np.ix_(deplist, deplist)]
     truetheta = truetheta / np.sum(np.abs(truetheta))
     print(truetheta)
-    data = data.subset(list(range(ndep+size)))
+    ind = np.random.choice(list(range(ndep, data.nitems)), size, replace=False)
+    data = data.subset(list(range(ndep)) + list(ind))
     theta = learn(data, show=args.show, niter=1500, step=1.0, reg=0.005, exact=False, nsamples=500, init_theta='diag')
     #plt.gca().clear()
     #plot_mat(theta, plt.gca(), labels=data.labels, full=True)

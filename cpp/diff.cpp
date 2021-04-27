@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <numeric>
 #include <cmath>
+#include <random>
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 #include <pybind11/eigen.h>
@@ -59,7 +60,7 @@ double logsumexp(const std::vector<double>& a) {
 }
 
 
-double loglik_seq_nograd_notime(const Eigen::MatrixXd& theta, const seq_t& seq) {
+double loglik_seq_nograd(const Eigen::MatrixXd& theta, const seq_t& seq) {
   int n = theta.rows();
   std::list<int> rest;
   for (auto i=0; i < n; i++) rest.push_back(i);
@@ -99,7 +100,7 @@ double loglik_seq_nograd_notime(const Eigen::MatrixXd& theta, const seq_t& seq) 
 }
 
 
-std::pair<double, Eigen::MatrixXd> loglik_seq_notime(const Eigen::MatrixXd& theta, const seq_t& seq) {
+std::pair<double, Eigen::MatrixXd> loglik_seq(const Eigen::MatrixXd& theta, const seq_t& seq) {
   int n = theta.rows();
   std::list<int> rest;
   for (auto i=0; i < n; i++) rest.push_back(i);
@@ -151,16 +152,6 @@ std::pair<double, Eigen::MatrixXd> loglik_seq_notime(const Eigen::MatrixXd& thet
 }
 
 
-double loglik_seq_nograd(const Eigen::MatrixXd& theta, const seq_t& seq, double time = NOTIME) {
-  return loglik_seq_nograd_notime(theta, seq);
-}
-
-
-std::pair<double, Eigen::MatrixXd> loglik_seq(const Eigen::MatrixXd& theta, const seq_t& seq, double time = NOTIME) {
-  return loglik_seq_notime(theta, seq);
-}
-
-
 std::vector<seq_t> all_perms(const seq_t& set) {
   std::vector<seq_t> result;
   seq_t sorted = seq_t(set);
@@ -172,58 +163,165 @@ std::vector<seq_t> all_perms(const seq_t& set) {
 }
 
 
-std::vector<seq_t> sample_perms(const Eigen::MatrixXd& theta, const seq_t& set, int nperms, double time = NOTIME) {
+std::pair<seq_t, double> sample_one(const Eigen::MatrixXd& theta, const seq_t& set, std::mt19937& gen) {
+  int n = theta.rows();
+  seq_t setrest(set.cbegin(), set.cend());
+  std::sort(setrest.begin(), setrest.end());
+  seq_t rest;
+  for (auto i=0; i < n; i++) rest.push_back(i);
+  seq_t result;
+  double logprob = 0;
+
+  for (auto k=0; k < set.size(); k++) {
+    /*
+    for (auto foo : rest) {
+      std::cout << foo << std::endl;
+    }
+    std::cout << "================" << std::endl;
+    */
+    
+    dseq_t sumth(rest.size()+1);
+    sumth[rest.size()] = 0.0;
+    int r = 0;
+    for (auto j : rest) {
+      sumth[r] = theta(j, j);
+      for (auto s : result) {
+        sumth[r] += theta(s, j);
+      }
+      r++;
+    }
+
+    double lse = logsumexp(sumth);
+
+    // Compute probabilities of each next element. Candidates are only items
+    // in `set` that have not already been added to `result`.
+    dseq_t logprobs(setrest.size());
+    seq_t restidx(setrest.size());
+    int j = 0;
+    for (auto i=0; i < rest.size(); i++) {
+      if (rest[i] == setrest[j]) {
+        logprobs[j] = sumth[i] - lse;
+        restidx[j] = i;
+        j++;
+      }
+    }
+    double logsumprobs = logsumexp(logprobs);
+
+    dseq_t probs(setrest.size());
+    for (auto i=0; i < probs.size(); i++) {
+      probs[i] = exp(logprobs[i]);
+    }
+    
+    std::discrete_distribution<> dist(probs.cbegin(), probs.cend());
+    auto idx = dist(gen);
+    auto next = setrest[idx];
+    logprob += (logprobs[idx] - logsumprobs);
+
+    // Remove `next` from `rest` and `setrest`, and add to `result`.
+    setrest.erase(setrest.begin()+idx);
+    rest.erase(rest.begin()+restidx[idx]);
+    result.push_back(next);
+  }
+
+  //std::cout << result[0] << " " << result[1] << std::endl;
+  return std::make_pair(result, logprob);
+}
+
+
+std::vector<seq_t> sample_perms(const Eigen::MatrixXd& theta, const seq_t& set, int nperms) {
+  std::random_device rd;
+  std::mt19937 gen(rd());
+  std::uniform_real_distribution<double> unif(0, 1);
+
   int burnin = nperms;
   std::vector<seq_t> result;
-  seq_t cur(set);
+  //int naccept = 0;
+  auto res = sample_one(theta, set, gen);
+  auto cur = res.first;
+  auto qcur = res.second;
   auto pcur = loglik_seq_nograd(theta, cur);
+  
   for(auto i=0; i < burnin+nperms; i++) {
-    seq_t next(cur);
-    std::random_shuffle(next.begin(), next.end());
-    auto pnext = loglik_seq_nograd(theta, next, time);
-    auto paccept = std::min(1.0, pnext/pcur);
-    if ((double) rand() / (RAND_MAX) > paccept) {
+    auto res = sample_one(theta, set, gen);
+    auto next = res.first;
+    auto qnext = res.second;
+    auto pnext = loglik_seq_nograd(theta, next);
+    auto paccept = std::min(1.0, exp(pnext-pcur+qcur-qnext));
+    if (unif(gen) < paccept) {
       pcur = pnext;
+      cur = next;
+      qcur = qnext;
+      //if (i >= burnin) naccept++;
     }
     if (i >= burnin) {
-      result.push_back(next);
+      result.push_back(cur);
     }
   }
+
+  //std::cout << "acc. rate = " << naccept / (1.0*nperms) << std::endl;
   return result;
 }
 
 
-std::pair<double, Eigen::MatrixXd> loglik_set_aux(const Eigen::MatrixXd& theta, const seq_t& set, std::vector<seq_t> perms, double time) {
-  auto n = theta.rows();
-  std::vector<double> liks(perms.size());
-  std::vector<Eigen::MatrixXd> grads(perms.size());
+std::vector<seq_t> sample_perms_random(const Eigen::MatrixXd& theta, const seq_t& set, int nperms) {
+  std::random_device rd;
+  std::mt19937 gen(rd());
+  std::uniform_real_distribution<double> unif(0, 1);
 
-  for (auto i=0; i < perms.size(); i++) {
-    auto res = loglik_seq(theta, perms[i], time);
-    liks[i] = res.first;
-    grads[i] = res.second;
-  }
+  int burnin = nperms;
+  std::vector<seq_t> result;
+  //int naccept = 0;
+  seq_t cur(set);
+  auto pcur = loglik_seq_nograd(theta, cur);
   
-  double lse = logsumexp(liks);
-
-  Eigen::MatrixXd grad = Eigen::MatrixXd::Zero(n, n);
-  for (auto i=0; i < perms.size(); i++) {
-    grad += exp(liks[i] - lse) * grads[i];
+  for(auto i=0; i < burnin+nperms; i++) {
+    seq_t next(cur);
+    std::shuffle(next.begin(), next.end(), gen);
+    auto pnext = loglik_seq_nograd(theta, next);
+    auto paccept = std::min(1.0, exp(pnext-pcur));
+    if (unif(gen) < paccept) {
+      pcur = pnext;
+      cur = next;
+      //if (i >= burnin) naccept++;
+    }
+    if (i >= burnin) {
+      result.push_back(cur);
+    }
   }
 
-  return std::make_pair(lse, grad);
+  //std::cout << "acc. rate = " << naccept / (1.0*nperms) << std::endl;
+  return result;
 }
 
 
 std::pair<double, Eigen::MatrixXd> loglik_set_full(const Eigen::MatrixXd& theta, const seq_t& set, double time = NOTIME) {
   auto perms = all_perms(set);
-  return loglik_set_aux(theta, set, perms, time);
+  auto n = theta.rows();
+  std::vector<double> liks(perms.size());
+  std::vector<Eigen::MatrixXd> grads(perms.size());
+  for (auto i=0; i < perms.size(); i++) {
+    auto res = loglik_seq(theta, perms[i]);
+    liks[i] = res.first;
+    grads[i] = res.second;
+  }
+  double lse = logsumexp(liks);
+  Eigen::MatrixXd grad = Eigen::MatrixXd::Zero(n, n);
+  for (auto i=0; i < perms.size(); i++) {
+    grad += exp(liks[i] - lse) * grads[i];
+  }
+  return std::make_pair(lse, grad);
 }
 
 
-std::pair<double, Eigen::MatrixXd> loglik_set(const Eigen::MatrixXd& theta, const seq_t& set, int nperms, double time = NOTIME) {
-  auto perms = sample_perms(theta, set, nperms, time);
-  return loglik_set_aux(theta, set, perms, time);
+// FIXME: Maybe more efficient to move gradient computation inside `sample_perms_random`?
+Eigen::MatrixXd loglik_set(const Eigen::MatrixXd& theta, const seq_t& set, int nperms, double time = NOTIME) {
+  auto perms = sample_perms_random(theta, set, nperms);
+  Eigen::MatrixXd grad = Eigen::MatrixXd::Zero(theta.rows(), theta.rows());
+  for (auto i=0; i < perms.size(); i++) {
+    grad += loglik_seq(theta, perms[i]).second;
+  }
+  grad /= perms.size();
+  return grad;
 }
 
 
@@ -266,7 +364,7 @@ Eigen::MatrixXd loglik_data(const Eigen::MatrixXd& theta, const std::vector<seq_
     if (data[i].size() < 6) {
       grad += loglik_set_full(theta, data[i], time).second;
     } else {
-      grad += loglik_set(theta, data[i], nperms, time).second;
+      grad += loglik_set(theta, data[i], nperms, time);
     }
   }
   grad /= data.size();
@@ -295,18 +393,4 @@ PYBIND11_MODULE(diff, m) {
         py::arg("theta"),
         py::arg("data"),
         py::arg("times") = std::vector<double>());
-}
-
-
-int main() {
-  int n = 20;
-  Eigen::MatrixXd theta = Eigen::MatrixXd::Zero(n, n);
-  seq_t set = {2, 0, 1, 3, 5, 8};
-  double step = 0.01;
-
-  for (auto i=0; i < 100; i++) {
-    auto res = loglik_set(theta, set, 100);
-    theta += step*res.second;
-    std::cout << res.first << std::endl;
-  }
 }

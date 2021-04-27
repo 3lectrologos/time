@@ -47,7 +47,7 @@ def ptt(x, t):
 
 def loglik(xvec, g, pdata):
     n = int(np.sqrt(xvec.shape[0]))
-    x = vec2mat(xvec, n)
+    x = util.vec2mat(xvec, n)
     Qt = getq(x)
     # NOTE: Careful with the transposition here.
     Rt = np.eye(2**n) - Qt.T
@@ -76,7 +76,7 @@ def loglik(xvec, g, pdata):
                             gradQ[i, j] = np.exp(np.sum(ts))
                             gradQ[i, i] -= np.exp(np.sum(ts))
             grad[w, v] = -rleft @ gradQ.T @ pt
-    grad = mat2vec(grad)
+    grad = util.mat2vec(grad)
     for i in range(g.shape[0]):
         g[i] = grad[i]
     return -res
@@ -155,16 +155,16 @@ if __name__ == '__main__':
     if args.reg:
         orthantwise_c = 0.01
         print(f'Running with reg. c = {orthantwise_c}')
-        sol = lbfgs.fmin_lbfgs(fopt, x0=mat2vec(x0), epsilon=1e-8,
+        sol = lbfgs.fmin_lbfgs(fopt, x0=util.mat2vec(x0), epsilon=1e-8,
                                orthantwise_c=orthantwise_c,
                                orthantwise_start=n,
                                line_search='wolfe')
     else:
-        sol = lbfgs.fmin_lbfgs(fopt, x0=mat2vec(x0), epsilon=1e-8)
+        sol = lbfgs.fmin_lbfgs(fopt, x0=util.mat2vec(x0), epsilon=1e-8)
 
     lik = -loglik(sol, None, pdata)
     print('loglik =', lik)
-    sol = vec2mat(sol, n)
+    sol = util.vec2mat(sol, n)
     print(sol)
     print('exp(sol) =')
     print(np.exp(sol))

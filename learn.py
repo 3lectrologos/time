@@ -256,7 +256,7 @@ def recover_one(args, size, it):
     print(truetheta)
     ind = np.random.choice(list(range(ndep, data.nitems)), size, replace=False)
     data = data.subset(list(range(ndep)) + list(ind))
-    theta = learn(data, show=args.show, niter=1500, step=1.0, reg=0.005, exact=False, nsamples=500, init_theta='diag')
+    theta = learn(data, show=args.show, niter=1500, step=1.0, reg=0.005, exact=False, nsamples=300, init_theta='diag')
     #plt.gca().clear()
     #plot_mat(theta, plt.gca(), labels=data.labels, full=True)
     #plt.savefig(f'figs/fig_{size}_{it}.png')
@@ -268,7 +268,7 @@ def recover_one(args, size, it):
 
 
 def recover_multi(args):
-    sizes = [0, 2, 4, 6]
+    sizes = [0, 1, 2, 3, 4, 5, 6, 7]
     niters = 19
 
     iters = range(niters)
@@ -638,14 +638,20 @@ def plot_max2():
     gsavs = []
     difs = []
 
-    if True:
+    if False:
         import os, shutil
         shutil.rmtree('synth', ignore_errors=True)
         os.mkdir('synth')
         save_data(nreps, ndata, nrest)
 
-    for i in range(nreps):
+    for i in [2]:
         data, times, truetheta, ndep = get_data(i)
+
+        data = data.subset(list(range(50)))
+        foo = [len(d) for d in data]
+        plt.hist(foo, bins=20)
+        plt.show()
+        
         truetheta = truetheta[np.ix_(list(range(ndep)), list(range(ndep)))]
         truetheta = truetheta / np.sum(np.abs(truetheta))
         data = data.subset(list(range(ndep)))

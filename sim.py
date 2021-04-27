@@ -56,9 +56,9 @@ def draw_one_old(th, time=False):
         else:
             res.append(next)
     if time:
-        return tuple(res), None
+        return res, None
     else:
-        return tuple(res)
+        return res
 
 
 def draw_one(th, time=False):

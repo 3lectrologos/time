@@ -44,6 +44,10 @@ class Optimizer:
     BUF_SIZE = 200
     MIN_DIF = 0.03
 
+    def __init__(self, grad, verbose=True):
+        self.grad = grad
+        self.verbose = verbose
+    
     def init_run(self, xinit, show):
         if show:
             self.fig, self.ax = plt.subplots(1, 1, figsize=(11, 11))
@@ -64,7 +68,7 @@ class Optimizer:
             return False
 
     def plot(self, it, show, data, xsol):
-        if it % 50 == 49:
+        if self.verbose and it % 50 == 49:
             util.dot10(str(it+1))
         if show and it % 100 == 0:
             self.ax.clear()
@@ -74,9 +78,6 @@ class Optimizer:
 class NAGOptimizer(Optimizer):
     GAMMA = 0.9
     
-    def __init__(self, grad):
-        self.grad = grad
-
     def reg_L1(self, xmat, reg):
         n = xmat.shape[0]
         xvec = util.mat2vec(xmat)
@@ -151,14 +152,15 @@ class NAGOptimizer(Optimizer):
             u += xdiag
             return u
 
-    def run(self, data, niter, xinit, step, reg, show=False, only_diag=False, verbose=True):
+    def run(self, data, niter, xinit, step, reg, show=False, only_diag=False):
         self.only_diag = only_diag
         self.init_run(xinit, show)
         n = xinit.shape[0]
         mom = np.zeros_like(xinit)
         xsol = np.copy(xinit)
         for it in range(niter):
-            util.dot()
+            if self.verbose:
+                util.dot()
             xsol += self.GAMMA*mom
             g = self.grad(xsol, data)
             xsol += step*g
@@ -183,16 +185,13 @@ class NAGOptimizer(Optimizer):
 class AdaOptimizer(Optimizer):
     EPS = 1e-6
 
-    def __init__(self, grad):
-        self.grad = grad
-
-    def run(self, data, niter, xinit, step, reg, show=False, only_diag=False, verbose=True):
+    def run(self, data, niter, xinit, step, reg, show=False, only_diag=False):
         self.init_run(xinit, show)
         n = xinit.shape[0]
         xsol = np.copy(xinit)
         hg = np.zeros_like(xsol)
         for it in range(niter):
-            if verbose:
+            if self.verbose:
                 util.dot()
             # FIXME: Need to separate regularized from non-regularized part
             g = self.grad(xsol, data)
@@ -222,6 +221,7 @@ class AdaOptimizer(Optimizer):
 
 
 def learn(data, **kwargs):
+    fgrad = kwargs.get('fgrad', None)
     niter = kwargs.get('niter', 1000)
     step = kwargs.get('step', 0.1)
     reg = kwargs.get('reg', 26)
@@ -229,11 +229,14 @@ def learn(data, **kwargs):
     nsamples = kwargs.get('nsamples', 50)
     show = kwargs.get('show', False)
     init_theta = kwargs.get('init_theta', None)
+    verbose = kwargs.get('verbose', True)
 
-    if exact:
-        opt = NAGOptimizer(lambda t, x: diff.loglik_data_full(t, x)[1])
+    if fgrad is not None:
+        opt = NAGOptimizer(fgrad, verbose)
+    elif exact:
+        opt = NAGOptimizer(lambda t, x: diff.loglik_data_full(t, x)[1], verbose)
     else:
-        opt = NAGOptimizer(lambda t, x: diff.loglik_data(t, x, nsamples))
+        opt = NAGOptimizer(lambda t, x: diff.loglik_data(t, x, nsamples), verbose)
 
     if init_theta is None:
         init_theta = np.random.uniform(-0.1, 0.1, (data.nitems, data.nitems))
@@ -256,7 +259,7 @@ def recover_one(args, size, it):
     print(truetheta)
     ind = np.random.choice(list(range(ndep, data.nitems)), size, replace=False)
     data = data.subset(list(range(ndep)) + list(ind))
-    theta = learn(data, show=args.show, niter=1500, step=1.0, reg=0.005, exact=False, nsamples=300, init_theta='diag')
+    theta = learn(data, show=args.show, niter=1000, step=1.0, reg=0.005, exact=False, nsamples=150, init_theta='diag')
     #plt.gca().clear()
     #plot_mat(theta, plt.gca(), labels=data.labels, full=True)
     #plt.savefig(f'figs/fig_{size}_{it}.png')
@@ -269,19 +272,22 @@ def recover_one(args, size, it):
 
 def recover_multi(args):
     sizes = [0, 1, 2, 3, 4, 5, 6, 7]
-    niters = 19
+    #niters = 19
+    nreps = 5
 
-    iters = range(niters)
-    difs = joblib.Parallel(n_jobs=19)(joblib.delayed(recover_one)(args, size, it)
-                                      for size in sizes
-                                      for it in iters)
+    #iters = range(niters)
+    iters = [1]
+    difs = joblib.Parallel(n_jobs=1)(joblib.delayed(recover_one)(args, size, it)
+                                     for size in sizes
+                                     for it in iters
+                                     for rep in range(nreps))
     difs = np.asarray(difs)
     print(difs.shape)
-    difs = difs.reshape((len(sizes), -1))
+    difs = difs.reshape((len(sizes), len(iters), -1))
     print(difs)
     with open('difs.pcl', 'wb') as fout:
         pickle.dump((sizes, difs), fout)
-    meandifs = np.mean(difs, axis=1)
+    meandifs = np.mean(difs, axis=(1, 2))
     print('meandifs =', meandifs)
     plt.gca().clear()
     plt.plot(sizes, meandifs, '-o')
@@ -625,10 +631,10 @@ def get_data(i):
     return data, times, true, ndep
 
 
-def plot_max2():
-    reg = 0.00001
+def plot_max2(show):
+    #reg = 0.001
 
-    nreps = 100
+    nreps = 20
     ndata = 1000
     nrest = 100
     
@@ -644,13 +650,13 @@ def plot_max2():
         os.mkdir('synth')
         save_data(nreps, ndata, nrest)
 
-    for i in [2]:
+    for i in [1]:#range(nreps):
         data, times, truetheta, ndep = get_data(i)
 
-        data = data.subset(list(range(50)))
-        foo = [len(d) for d in data]
-        plt.hist(foo, bins=20)
-        plt.show()
+        #data = data.subset(list(range(50)))
+        #foo = [len(d) for d in data]
+        #plt.hist(foo, bins=20)
+        #plt.show()
         
         truetheta = truetheta[np.ix_(list(range(ndep)), list(range(ndep)))]
         truetheta = truetheta / np.sum(np.abs(truetheta))
@@ -668,20 +674,24 @@ def plot_max2():
         #import base
         #lst = base.get_samples(theta, ndata)
 
-        r, val, (sav, gsav) = max_flik_full(data, reg, times)
-        #r, val = closed_form(data)
+        #r, val, (sav, gsav) = max_flik_full(data, reg, times)
 
-        print(f'{i} | val = {val}')
-        theta = util.vec2mat(r, data.nitems)
+        #print(f'{i} | val = {val}')
+        #theta = util.vec2mat(r, data.nitems)
+
+        print(f'Learning {i}')
+        fgrad = lambda t, x: tdiff.loglik_data(t, x, times)[1]
+        theta = learn(data, fgrad=fgrad, show=show, niter=1000, step=1.0, reg=0.005,
+                      exact=True, nsamples=150, init_theta='diag', verbose=False)
         print('theta =')
         print(theta)
         res.append(theta)
         theta = theta / np.sum(np.abs(theta))
         dif = np.sum(np.abs(theta-truetheta))
         difs.append(dif)
-        vals.append(val)
-        savs.append(sav)
-        gsavs.append(gsav)
+        #vals.append(val)
+        #savs.append(sav)
+        #gsavs.append(gsav)
 
     print('meandif =', np.mean(difs))
 
@@ -700,14 +710,16 @@ def plot_max2():
     pairs = [
         # axis,  i1, j1, i2, j2
         ([0, 0], [0, 1], [1, 0]),
-        ([0, 1], [0, 2], [2, 0]),
-        ([1, 0], [1, 2], [2, 1]),
-        ([1, 1], [0, 0], [1, 1])
+        ([0, 1], [0, 0], [1, 1]),
+        ([1, 0], [0, 1], [1, 0]),
+        ([1, 1], [0, 1], [1, 0]),
+        #([0, 1], [0, 2], [2, 0]),
+        #([1, 0], [1, 2], [2, 1]),
+        #([1, 1], [0, 0], [1, 1])
     ]
 
     truetheta = get_data(0)[2]
     truetheta = truetheta[np.ix_(list(range(ndep)), list(range(ndep)))]
-    print(res)
     for axidx, p1, p2 in pairs:
         t1 = [r[p1[0], p1[1]] for r in res]
         t2 = [r[p2[0], p2[1]] for r in res]
@@ -757,5 +769,4 @@ if __name__ == '__main__':
     elif args.recall:
         recover_multi(args)
     elif args.plot:
-        plot_max2()
-
+        plot_max2(args.show)

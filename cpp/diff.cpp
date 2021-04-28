@@ -228,73 +228,85 @@ std::pair<seq_t, double> sample_one(const Eigen::MatrixXd& theta, const seq_t& s
 }
 
 
-std::vector<seq_t> sample_perms(const Eigen::MatrixXd& theta, const seq_t& set, int nperms) {
+Eigen::MatrixXd loglik_set_inf(const Eigen::MatrixXd& theta, const seq_t& set, int nperms) {
   std::random_device rd;
   std::mt19937 gen(rd());
   std::uniform_real_distribution<double> unif(0, 1);
+  Eigen::MatrixXd grad = Eigen::MatrixXd::Zero(theta.rows(), theta.rows());
 
-  int burnin = nperms;
+  int burnin = 0;
   std::vector<seq_t> result;
   //int naccept = 0;
   auto res = sample_one(theta, set, gen);
   auto cur = res.first;
   auto qcur = res.second;
-  auto pcur = loglik_seq_nograd(theta, cur);
+  auto rescur = loglik_seq(theta, cur);
+  auto pcur = rescur.first;
+  auto gcur = rescur.second;
   
   for(auto i=0; i < burnin+nperms; i++) {
     auto res = sample_one(theta, set, gen);
     auto next = res.first;
     auto qnext = res.second;
-    auto pnext = loglik_seq_nograd(theta, next);
+    auto resnext = loglik_seq(theta, next);
+    auto pnext = resnext.first;
+    auto gnext = resnext.second;
     auto paccept = std::min(1.0, exp(pnext-pcur+qcur-qnext));
     if (unif(gen) < paccept) {
       pcur = pnext;
-      cur = next;
       qcur = qnext;
+      gcur = gnext;
+      cur = next;
       //if (i >= burnin) naccept++;
     }
     if (i >= burnin) {
-      result.push_back(cur);
+      grad += gcur;
     }
   }
 
   //std::cout << "acc. rate = " << naccept / (1.0*nperms) << std::endl;
-  return result;
+  return grad/nperms;
 }
 
 
-std::vector<seq_t> sample_perms_random(const Eigen::MatrixXd& theta, const seq_t& set, int nperms) {
+Eigen::MatrixXd loglik_set(const Eigen::MatrixXd& theta, const seq_t& set, int nperms) {
   std::random_device rd;
   std::mt19937 gen(rd());
   std::uniform_real_distribution<double> unif(0, 1);
+  Eigen::MatrixXd grad = Eigen::MatrixXd::Zero(theta.rows(), theta.rows());
 
-  int burnin = nperms;
+  int burnin = 0;
   std::vector<seq_t> result;
   //int naccept = 0;
   seq_t cur(set);
-  auto pcur = loglik_seq_nograd(theta, cur);
+  auto rescur = loglik_seq(theta, cur);
+  auto pcur = rescur.first;
+  auto gcur = rescur.second;
   
   for(auto i=0; i < burnin+nperms; i++) {
     seq_t next(cur);
     std::shuffle(next.begin(), next.end(), gen);
-    auto pnext = loglik_seq_nograd(theta, next);
+    auto resnext = loglik_seq(theta, next);
+    auto pnext = resnext.first;
+    auto gnext = resnext.second;
     auto paccept = std::min(1.0, exp(pnext-pcur));
     if (unif(gen) < paccept) {
       pcur = pnext;
+      gcur = gnext;
       cur = next;
       //if (i >= burnin) naccept++;
     }
     if (i >= burnin) {
-      result.push_back(cur);
+      grad += gcur;
     }
   }
 
   //std::cout << "acc. rate = " << naccept / (1.0*nperms) << std::endl;
-  return result;
+  return grad/nperms;
 }
 
 
-std::pair<double, Eigen::MatrixXd> loglik_set_full(const Eigen::MatrixXd& theta, const seq_t& set, double time = NOTIME) {
+std::pair<double, Eigen::MatrixXd> loglik_set_full(const Eigen::MatrixXd& theta, const seq_t& set) {
   auto perms = all_perms(set);
   auto n = theta.rows();
   std::vector<double> liks(perms.size());
@@ -313,18 +325,6 @@ std::pair<double, Eigen::MatrixXd> loglik_set_full(const Eigen::MatrixXd& theta,
 }
 
 
-// FIXME: Maybe more efficient to move gradient computation inside `sample_perms_random`?
-Eigen::MatrixXd loglik_set(const Eigen::MatrixXd& theta, const seq_t& set, int nperms, double time = NOTIME) {
-  auto perms = sample_perms_random(theta, set, nperms);
-  Eigen::MatrixXd grad = Eigen::MatrixXd::Zero(theta.rows(), theta.rows());
-  for (auto i=0; i < perms.size(); i++) {
-    grad += loglik_seq(theta, perms[i]).second;
-  }
-  grad /= perms.size();
-  return grad;
-}
-
-
 #pragma omp declare reduction(+: Eigen::MatrixXd: omp_out=omp_out+omp_in) initializer(omp_priv = omp_orig)
 
 std::pair<double, Eigen::MatrixXd> loglik_data_full(const Eigen::MatrixXd& theta, const std::vector<seq_t>& data, const std::vector<double>& times = {}) {
@@ -333,13 +333,7 @@ std::pair<double, Eigen::MatrixXd> loglik_data_full(const Eigen::MatrixXd& theta
   Eigen::MatrixXd grad = Eigen::MatrixXd::Zero(n, n);
   //#pragma omp parallel for reduction(+:lik,grad)
   for (auto i=0; i < data.size(); i++) {
-    double time;
-    if (times.size() == 0) {
-      time = NOTIME;
-    } else {
-      time = times[i];
-    }
-    auto res = loglik_set_full(theta, data[i], time);
+    auto res = loglik_set_full(theta, data[i]);
     lik += res.first;
     grad += res.second;
   }
@@ -349,22 +343,16 @@ std::pair<double, Eigen::MatrixXd> loglik_data_full(const Eigen::MatrixXd& theta
 }
 
 
-Eigen::MatrixXd loglik_data(const Eigen::MatrixXd& theta, const std::vector<seq_t>& data, int nperms, const std::vector<double>& times = {}) {
+Eigen::MatrixXd loglik_data(const Eigen::MatrixXd& theta, const std::vector<seq_t>& data, int nperms) {
   auto n = theta.rows();
   Eigen::MatrixXd grad = Eigen::MatrixXd::Zero(n, n);
 #pragma omp parallel for reduction(+:grad)
   for (auto i=0; i < data.size(); i++) {
     // TODO: Refactor this
-    double time;
-    if (times.size() == 0) {
-      time = NOTIME;
-    } else {
-      time = times[i];
-    }
     if (data[i].size() < 6) {
-      grad += loglik_set_full(theta, data[i], time).second;
+      grad += loglik_set_full(theta, data[i]).second;
     } else {
-      grad += loglik_set(theta, data[i], nperms, time);
+      grad += loglik_set(theta, data[i], nperms);
     }
   }
   grad /= data.size();
@@ -384,13 +372,6 @@ PYBIND11_MODULE(diff, m) {
   m.def("loglik_seq", &loglik_seq, py::return_value_policy::reference_internal);
   m.def("loglik_set", &loglik_set, py::return_value_policy::reference_internal);
   m.def("loglik_set_full", &loglik_set_full, py::return_value_policy::reference_internal);
-  m.def("loglik_data", &loglik_data, py::return_value_policy::reference_internal,
-        py::arg("theta"),
-        py::arg("data"),
-        py::arg("nperms"),
-        py::arg("times") = std::vector<double>());
-  m.def("loglik_data_full", &loglik_data_full, py::return_value_policy::reference_internal,
-        py::arg("theta"),
-        py::arg("data"),
-        py::arg("times") = std::vector<double>());
+  m.def("loglik_data", &loglik_data, py::return_value_policy::reference_internal);
+  m.def("loglik_data_full", &loglik_data_full, py::return_value_policy::reference_internal);
 }

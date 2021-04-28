@@ -167,49 +167,25 @@ std::pair<seq_t, double> sample_one(const Eigen::MatrixXd& theta, const seq_t& s
   int n = theta.rows();
   seq_t setrest(set.cbegin(), set.cend());
   std::sort(setrest.begin(), setrest.end());
-  seq_t rest;
-  for (auto i=0; i < n; i++) rest.push_back(i);
   seq_t result;
   double logprob = 0;
 
   for (auto k=0; k < set.size(); k++) {
-    /*
-    for (auto foo : rest) {
-      std::cout << foo << std::endl;
-    }
-    std::cout << "================" << std::endl;
-    */
-    
-    dseq_t sumth(rest.size()+1);
-    sumth[rest.size()] = 0.0;
+    dseq_t logprobs(setrest.size());
     int r = 0;
-    for (auto j : rest) {
-      sumth[r] = theta(j, j);
-      for (auto s : result) {
-        sumth[r] += theta(s, j);
+    for (auto i : setrest) {
+      for (auto j : setrest) {
+        if (i != j) {
+          logprobs[r] += theta(i, j);
+        }
       }
       r++;
     }
 
-    double lse = logsumexp(sumth);
-
-    // Compute probabilities of each next element. Candidates are only items
-    // in `set` that have not already been added to `result`.
-    dseq_t logprobs(setrest.size());
-    seq_t restidx(setrest.size());
-    int j = 0;
-    for (auto i=0; i < rest.size(); i++) {
-      if (rest[i] == setrest[j]) {
-        logprobs[j] = sumth[i] - lse;
-        restidx[j] = i;
-        j++;
-      }
-    }
     double logsumprobs = logsumexp(logprobs);
-
-    dseq_t probs(setrest.size());
+    dseq_t probs(logprobs);
     for (auto i=0; i < probs.size(); i++) {
-      probs[i] = exp(logprobs[i]);
+      probs[i] = exp(probs[i]);
     }
     
     std::discrete_distribution<> dist(probs.cbegin(), probs.cend());
@@ -218,9 +194,8 @@ std::pair<seq_t, double> sample_one(const Eigen::MatrixXd& theta, const seq_t& s
     logprob += (logprobs[idx] - logsumprobs);
 
     // Remove `next` from `rest` and `setrest`, and add to `result`.
-    setrest.erase(setrest.begin()+idx);
-    rest.erase(rest.begin()+restidx[idx]);
     result.push_back(next);
+    setrest.erase(setrest.begin()+idx);
   }
 
   //std::cout << result[0] << " " << result[1] << std::endl;
@@ -228,7 +203,7 @@ std::pair<seq_t, double> sample_one(const Eigen::MatrixXd& theta, const seq_t& s
 }
 
 
-Eigen::MatrixXd loglik_set_inf(const Eigen::MatrixXd& theta, const seq_t& set, int nperms) {
+Eigen::MatrixXd loglik_set(const Eigen::MatrixXd& theta, const seq_t& set, int nperms) {
   std::random_device rd;
   std::mt19937 gen(rd());
   std::uniform_real_distribution<double> unif(0, 1);
@@ -269,7 +244,7 @@ Eigen::MatrixXd loglik_set_inf(const Eigen::MatrixXd& theta, const seq_t& set, i
 }
 
 
-Eigen::MatrixXd loglik_set(const Eigen::MatrixXd& theta, const seq_t& set, int nperms) {
+Eigen::MatrixXd loglik_set_unif(const Eigen::MatrixXd& theta, const seq_t& set, int nperms) {
   std::random_device rd;
   std::mt19937 gen(rd());
   std::uniform_real_distribution<double> unif(0, 1);
@@ -371,6 +346,7 @@ Eigen::MatrixXd loglik_data(const Eigen::MatrixXd& theta, const std::vector<seq_
 PYBIND11_MODULE(diff, m) {
   m.def("loglik_seq", &loglik_seq, py::return_value_policy::reference_internal);
   m.def("loglik_set", &loglik_set, py::return_value_policy::reference_internal);
+  m.def("loglik_set_unif", &loglik_set_unif, py::return_value_policy::reference_internal);
   m.def("loglik_set_full", &loglik_set_full, py::return_value_policy::reference_internal);
   m.def("loglik_data", &loglik_data, py::return_value_policy::reference_internal);
   m.def("loglik_data_full", &loglik_data_full, py::return_value_policy::reference_internal);

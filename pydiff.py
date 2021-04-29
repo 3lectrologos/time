@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pylab as plt
 import itertools
+from collections import defaultdict
 import argparse
 import scipy.special
 import base
@@ -40,8 +41,6 @@ def loglik_set(th, x):
            for xperm in itertools.permutations(x)]
     liks, grds = zip(*res)
 
-    print(liks[:10])
-                     
     lse = scipy.special.logsumexp(liks)
     liks = np.asarray(liks)
     liks -= lse
@@ -49,6 +48,61 @@ def loglik_set(th, x):
     for w, g in zip(liks, grds):
         grd += np.exp(w)*g
     return lse, grd
+
+
+def loglik_set_new(th, x):
+    ground = set(range(th.shape[0]))
+    xset = set(x)
+    prev = {frozenset([]): (0, np.zeros_like(th))}
+    while True:
+        if len(x) == 0:
+            break
+        next = defaultdict(lambda: ([], []))
+        for ps, (pval, pgrad) in prev.items():
+            rest = xset - ps
+            for r in rest:
+                ns = ps | frozenset([r])
+                nval = pval
+                gval = pgrad.copy()
+                sumth = []
+                for j in ground - ps:
+                    sumth.append(th[j, j] + sum(th[i, j] for i in ps))
+                    if j == r:
+                        nval += sumth[-1]
+                        gval[j, j] += 1
+                        for i in ps:
+                            gval[i, j] += 1
+                lse = scipy.special.logsumexp([0] + sumth)
+                nval -= lse
+                for k, j in enumerate(ground - ps):
+                    gval[j, j] -= np.exp(sumth[k]-lse)
+                    for i in ps:
+                        gval[i, j] -= np.exp(sumth[k]-lse)
+                next[ns][0].append(nval)
+                next[ns][1].append(gval)
+        for ns, (nval, ngrad) in next.items():
+            lse = scipy.special.logsumexp(nval)
+            nextval = lse
+            nextgrad = np.zeros_like(th)
+            for nv, ng in zip(nval, ngrad):
+                nextgrad += (np.exp(nv-lse)*ng)
+            next[ns] = (nextval, nextgrad)
+        prev = next
+        if len(prev) == 1:
+            break
+    assert len(prev) == 1
+    assert list(prev.keys())[0] == xset
+    sumth = []
+    for j in ground - xset:
+        sumth.append(th[j, j] + sum(th[i, j] for i in xset))
+    lse = scipy.special.logsumexp([0] + sumth)
+    lik = list(prev.items())[0][1][0] - lse
+    grad = list(prev.items())[0][1][1]
+    for r, j in enumerate(ground - xset):
+        grad[j, j] -= np.exp(sumth[r]-lse)
+        for i in xset:
+            grad[i, j] -= np.exp(sumth[r]-lse)
+    return lik, grad
 
 
 def test():

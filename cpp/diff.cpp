@@ -13,8 +13,10 @@
 namespace py = pybind11;
 
 
+typedef std::set<int> set_t;
 typedef std::vector<int> seq_t;
 typedef std::vector<double> dseq_t;
+typedef std::vector<Eigen::MatrixXd> matseq_t;
 
 
 const double NOTIME = -1;
@@ -203,7 +205,7 @@ std::pair<seq_t, double> sample_one(const Eigen::MatrixXd& theta, const seq_t& s
 }
 
 
-Eigen::MatrixXd loglik_set(const Eigen::MatrixXd& theta, const seq_t& set, int nperms) {
+Eigen::MatrixXd loglik_set_new(const Eigen::MatrixXd& theta, const seq_t& set, int nperms) {
   std::random_device rd;
   std::mt19937 gen(rd());
   std::uniform_real_distribution<double> unif(0, 1);
@@ -244,7 +246,7 @@ Eigen::MatrixXd loglik_set(const Eigen::MatrixXd& theta, const seq_t& set, int n
 }
 
 
-Eigen::MatrixXd loglik_set_unif(const Eigen::MatrixXd& theta, const seq_t& set, int nperms) {
+Eigen::MatrixXd loglik_set(const Eigen::MatrixXd& theta, const seq_t& set, int nperms) {
   std::random_device rd;
   std::mt19937 gen(rd());
   std::uniform_real_distribution<double> unif(0, 1);
@@ -281,7 +283,7 @@ Eigen::MatrixXd loglik_set_unif(const Eigen::MatrixXd& theta, const seq_t& set, 
 }
 
 
-std::pair<double, Eigen::MatrixXd> loglik_set_full(const Eigen::MatrixXd& theta, const seq_t& set) {
+std::pair<double, Eigen::MatrixXd> loglik_set_full_old(const Eigen::MatrixXd& theta, const seq_t& set) {
   auto perms = all_perms(set);
   auto n = theta.rows();
   std::vector<double> liks(perms.size());
@@ -300,9 +302,118 @@ std::pair<double, Eigen::MatrixXd> loglik_set_full(const Eigen::MatrixXd& theta,
 }
 
 
+std::pair<double, Eigen::MatrixXd> loglik_set_full(const Eigen::MatrixXd& theta, const seq_t& x) {
+  auto n = theta.rows();
+  set_t ground;
+  for (auto i=0; i < n; i++) ground.insert(i);
+  set_t xs(x.begin(), x.end());
+  std::map<set_t, double> prev;
+  std::map<set_t, Eigen::MatrixXd> prevgrad;
+  set_t empty;
+  prev[empty] = 0;
+  prevgrad[empty] = Eigen::MatrixXd::Zero(n, n);
+
+  while (true) {
+    if (x.size() == 0) {
+      break;
+    }
+    std::map<set_t, dseq_t> next;
+    std::map<set_t, matseq_t> nextgrad;
+    for (const auto& [ps, pval] : prev) {
+      set_t rest;
+      std::set_difference(xs.begin(), xs.end(), ps.begin(), ps.end(),
+                          std::inserter(rest, rest.begin()));
+      for (auto r : rest) {
+        set_t ns(ps);
+        ns.insert(r);
+        double nval = pval;
+        auto gval = prevgrad[ps];
+        set_t diff;
+        std::set_difference(ground.begin(), ground.end(), ps.begin(), ps.end(),
+                            std::inserter(diff, diff.begin()));
+        dseq_t sumth(diff.size()+1);
+        sumth[diff.size()] = 0;
+        int k = 0;
+        for (auto j : diff) {
+          sumth[k] = theta(j, j);
+          for (auto i : ps) {
+            sumth[k] += theta(i, j);
+          }
+          if (j == r) {
+            nval += sumth[k];
+            gval(j, j) += 1;
+            for (auto i : ps) {
+              gval(i, j) += 1;
+            }
+          }
+          k++;
+        }
+        double lse = logsumexp(sumth);
+        nval -= lse;
+        k = 0;
+        for (auto j : diff) {
+          gval(j, j) -= exp(sumth[k]-lse);
+          for (auto i : ps) {
+            gval(i, j) -= exp(sumth[k]-lse);
+          }
+          k++;
+        }
+        
+        auto found = next.find(ns);
+        if (found == next.end()) {
+          next[ns] = dseq_t();
+          nextgrad[ns] = matseq_t();
+        }
+        next[ns].push_back(nval);
+        nextgrad[ns].push_back(gval);
+      }
+    }
+    prev.clear();
+    prevgrad.clear();
+    for (const auto& [ns, nval] : next) {
+      double lse = logsumexp(nval);
+      prev[ns] = lse;
+      Eigen::MatrixXd ngrad = Eigen::MatrixXd::Zero(n, n);
+      for (auto i=0; i < nval.size(); i++) {
+        ngrad += exp(nval[i]-lse)*nextgrad[ns][i];
+      }
+      prevgrad[ns] = ngrad;
+    }
+    if (prev.size() == 1) break;
+  }
+
+  set_t diff;
+  std::set_difference(ground.begin(), ground.end(), xs.begin(), xs.end(),
+                      std::inserter(diff, diff.begin()));
+  dseq_t sumth(diff.size()+1);
+  sumth[diff.size()] = 0;
+  int r = 0;
+  for (auto j : diff) {
+    sumth[r] = theta(j, j);
+    for (auto i : xs) {
+      sumth[r] += theta(i, j);
+    }
+    r++;
+  }
+  double lse = logsumexp(sumth);
+
+  double lik = prev[xs] - lse;
+  Eigen::MatrixXd grad = prevgrad[xs];
+  r = 0;
+  for (auto j : diff) {
+    grad(j, j) -= exp(sumth[r]-lse);
+    for (auto i : xs) {
+      grad(i, j) -= exp(sumth[r]-lse);
+    }
+    r++;
+  }
+  return std::make_pair(lik, grad);
+}
+
+
 #pragma omp declare reduction(+: Eigen::MatrixXd: omp_out=omp_out+omp_in) initializer(omp_priv = omp_orig)
 
-std::pair<double, Eigen::MatrixXd> loglik_data_full(const Eigen::MatrixXd& theta, const std::vector<seq_t>& data, const std::vector<double>& times = {}) {
+std::pair<double, Eigen::MatrixXd> loglik_data_full(const Eigen::MatrixXd& theta, const std::vector<seq_t>& data) {
   auto n = theta.rows();
   double lik = 0;
   Eigen::MatrixXd grad = Eigen::MatrixXd::Zero(n, n);
@@ -324,7 +435,7 @@ Eigen::MatrixXd loglik_data(const Eigen::MatrixXd& theta, const std::vector<seq_
 #pragma omp parallel for reduction(+:grad)
   for (auto i=0; i < data.size(); i++) {
     // TODO: Refactor this
-    if (data[i].size() < 6) {
+    if (data[i].size() < 8) {
       grad += loglik_set_full(theta, data[i]).second;
     } else {
       grad += loglik_set(theta, data[i], nperms);
@@ -345,8 +456,9 @@ Eigen::MatrixXd loglik_data(const Eigen::MatrixXd& theta, const std::vector<seq_
 
 PYBIND11_MODULE(diff, m) {
   m.def("loglik_seq", &loglik_seq, py::return_value_policy::reference_internal);
+  m.def("loglik_set_new", &loglik_set_new, py::return_value_policy::reference_internal);
   m.def("loglik_set", &loglik_set, py::return_value_policy::reference_internal);
-  m.def("loglik_set_unif", &loglik_set_unif, py::return_value_policy::reference_internal);
+  m.def("loglik_set_full_old", &loglik_set_full_old, py::return_value_policy::reference_internal);
   m.def("loglik_set_full", &loglik_set_full, py::return_value_policy::reference_internal);
   m.def("loglik_data", &loglik_data, py::return_value_policy::reference_internal);
   m.def("loglik_data_full", &loglik_data_full, py::return_value_policy::reference_internal);

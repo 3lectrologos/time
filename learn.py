@@ -42,7 +42,7 @@ def plot_mat(theta, ax, labels, full=False, thresh=0.1):
 
 class Optimizer:
     BUF_SIZE = 200
-    MIN_DIF = 0.03
+    MIN_DIF = 0.01
 
     def __init__(self, grad, verbose=True):
         self.grad = grad
@@ -58,6 +58,7 @@ class Optimizer:
     def check_term(self, it, xsol):
         self.thetas[it % self.BUF_SIZE] = xsol
         maxdif = np.abs(xsol - self.thetas[(it+1) % self.BUF_SIZE]).max()
+        #print(maxdif)
         #
         #arg = np.abs(xsol - thetas[(it+1) % self.BUF_SIZE]).argmax()
         #
@@ -77,6 +78,7 @@ class Optimizer:
 
 class NAGOptimizer(Optimizer):
     GAMMA = 0.9
+    PSTEP = 0.995
     
     def reg_L1(self, xmat, reg):
         n = xmat.shape[0]
@@ -166,11 +168,13 @@ class NAGOptimizer(Optimizer):
             xsol += step*g
             mom = self.GAMMA*mom + step*g
             # L1-projection
-            xsol = self.reg_Lp(xsol, 0.01, 0.2)
+            xsol = self.reg_Lp(xsol, 0.01*step, 0.2)
             #xsol = self.reg_L1(xsol, 3)
             # Check termination
-            #if self.check_term(it, xsol):
-            #    break
+            if self.check_term(it, xsol):
+                break
+            if it > 1000:
+                step *= self.PSTEP
             # Plot stuff
             self.plot(it, show, data, xsol)
 
@@ -250,8 +254,8 @@ def learn(data, **kwargs):
     return theta
 
 
-def recover_one(args, size, it):
-    print(size, '--', it)
+def recover_one(args, size, it, rep):
+    print(size, '--', it, '-- rep', rep)
     data, _, truetheta, ndep = get_data(it)
     deplist = list(range(ndep))
     truetheta = truetheta[np.ix_(deplist, deplist)]
@@ -259,7 +263,7 @@ def recover_one(args, size, it):
     print(truetheta)
     ind = np.random.choice(list(range(ndep, data.nitems)), size, replace=False)
     data = data.subset(list(range(ndep)) + list(ind))
-    theta = learn(data, show=args.show, niter=1000, step=1.0, reg=0.005, exact=False, nsamples=150, init_theta='diag')
+    theta = learn(data, show=args.show, niter=3000, step=1.0, reg=0.005, exact=False, nsamples=300, init_theta='diag')
     #plt.gca().clear()
     #plot_mat(theta, plt.gca(), labels=data.labels, full=True)
     #plt.savefig(f'figs/fig_{size}_{it}.png')
@@ -271,16 +275,16 @@ def recover_one(args, size, it):
 
 
 def recover_multi(args):
-    sizes = [0, 1, 2, 3, 4, 5, 6, 7]
+    sizes = [20]
     #niters = 19
-    nreps = 5
+    nreps = 20
 
     #iters = range(niters)
     iters = [1]
-    difs = joblib.Parallel(n_jobs=1)(joblib.delayed(recover_one)(args, size, it)
-                                     for size in sizes
-                                     for it in iters
-                                     for rep in range(nreps))
+    difs = joblib.Parallel(n_jobs=20)(joblib.delayed(recover_one)(args, size, it, rep)
+                                      for size in sizes
+                                      for it in iters
+                                      for rep in range(nreps))
     difs = np.asarray(difs)
     print(difs.shape)
     difs = difs.reshape((len(sizes), len(iters), -1))
@@ -765,7 +769,7 @@ if __name__ == '__main__':
     parser.add_argument('--recall', action='store_true')
     args = parser.parse_args()
     if args.rec:
-        recover_one(args, int(args.rec[0]), int(args.rec[1]))
+        recover_one(args, int(args.rec[0]), int(args.rec[1]), rep=0)
     elif args.recall:
         recover_multi(args)
     elif args.plot:

@@ -42,7 +42,7 @@ def plot_mat(theta, ax, labels, full=False, thresh=0.1):
 
 class Optimizer:
     BUF_SIZE = 200
-    MIN_DIF = 0.01
+    MIN_DIF = 0.03
 
     def __init__(self, grad, verbose=True):
         self.grad = grad
@@ -155,6 +155,7 @@ class NAGOptimizer(Optimizer):
             return u
 
     def run(self, data, niter, xinit, step, reg, show=False, only_diag=False):
+        preg, lreg = reg
         self.only_diag = only_diag
         self.init_run(xinit, show)
         n = xinit.shape[0]
@@ -168,12 +169,12 @@ class NAGOptimizer(Optimizer):
             xsol += step*g
             mom = self.GAMMA*mom + step*g
             # L1-projection
-            xsol = self.reg_Lp(xsol, 0.01*step, 0.2)
+            xsol = self.reg_Lp(xsol, lreg*step, preg)
             #xsol = self.reg_L1(xsol, 3)
             # Check termination
             if self.check_term(it, xsol):
                 break
-            if it > 1000:
+            if it > 2000:
                 step *= self.PSTEP
             # Plot stuff
             self.plot(it, show, data, xsol)
@@ -246,12 +247,50 @@ def learn(data, **kwargs):
         init_theta = np.random.uniform(-0.1, 0.1, (data.nitems, data.nitems))
     elif init_theta == 'diag':
         th = np.zeros((data.nitems, data.nitems))
-        init_theta = opt.run(data, niter=101, step=1, reg=0, xinit=th, only_diag=True, show=show)
+        init_theta = opt.run(data, niter=101, step=1, reg=(1, 0), xinit=th, only_diag=True, show=show)
         th = np.random.uniform(-0.1, 0.1, (data.nitems, data.nitems))
         np.fill_diagonal(th, 0)
         init_theta += th
     theta = opt.run(data, niter=niter, step=step, reg=reg, xinit=init_theta, show=show)
     return theta
+
+
+def cval(data, reg, nfolds):
+    import math
+    import random
+    batch_size = math.ceil(len(data)/nfolds)
+    folds = list(data.batch(batch_size))
+    liks = []
+    for i in range(nfolds):
+        print(f'Fold {i}')
+        rest = set(range(nfolds)) - set([i])
+        dtrain = datasets.Data.merge([folds[r] for r in rest])
+        dtest = folds[i]
+        theta = learn(dtrain, show=False, niter=3000, step=1.0, reg=reg, exact=False,
+                      nsamples=300, init_theta='diag', verbose=False)
+        lik = diff.loglik_data_full(theta, dtest)[0]
+        liks.append(lik)
+    return liks
+
+
+def run_cval():
+    it = 2
+    regs = [0.001, 0.01, 0.02, 0.03, 0.1]
+    regparams = [(0.1, r) for r in regs]
+    size = 10
+    nfolds = 5
+    data, _, _, ndep = get_data(it)
+    #ind = np.random.choice(list(range(ndep, data.nitems)), size, replace=False)
+    ind = list(range(ndep, ndep+size))
+    data = data.subset(list(range(ndep)) + list(ind))
+    res = joblib.Parallel(n_jobs=len(regs))(joblib.delayed(cval)(data, reg, nfolds)
+                                            for reg in regparams)
+    res = np.array(res).reshape((-1, nfolds))
+    means = np.mean(res, axis=1)
+    stds = np.std(res, axis=1)
+    plt.errorbar(regs, means, yerr=stds, fmt='o-', capsize=3, linewidth=2)
+    plt.gca().set_xscale('log')
+    plt.show()
 
 
 def recover_one(args, size, it, rep):
@@ -261,9 +300,15 @@ def recover_one(args, size, it, rep):
     truetheta = truetheta[np.ix_(deplist, deplist)]
     truetheta = truetheta / np.sum(np.abs(truetheta))
     print(truetheta)
-    ind = np.random.choice(list(range(ndep, data.nitems)), size, replace=False)
+    if True:
+        ind = np.random.choice(list(range(ndep, data.nitems)), size, replace=False)
+    else:
+        ind = [77, 32, 80, 88, 94, 37, 96, 63, 27, 40]
+        foo = set(range(30, 50))
+        ind = list(set(ind) | foo)
+    print('IND ==>', ind)
     data = data.subset(list(range(ndep)) + list(ind))
-    theta = learn(data, show=args.show, niter=3000, step=1.0, reg=0.005, exact=False, nsamples=300, init_theta='diag')
+    theta = learn(data, show=args.show, niter=3000, step=0.5, reg=(0.2, 0.02), exact=False, nsamples=50, init_theta='diag')
     #plt.gca().clear()
     #plot_mat(theta, plt.gca(), labels=data.labels, full=True)
     #plt.savefig(f'figs/fig_{size}_{it}.png')
@@ -275,16 +320,16 @@ def recover_one(args, size, it, rep):
 
 
 def recover_multi(args):
-    sizes = [20]
+    sizes = [10]
     #niters = 19
     nreps = 20
 
     #iters = range(niters)
     iters = [1]
-    difs = joblib.Parallel(n_jobs=20)(joblib.delayed(recover_one)(args, size, it, rep)
-                                      for size in sizes
-                                      for it in iters
-                                      for rep in range(nreps))
+    difs = joblib.Parallel(n_jobs=1)(joblib.delayed(recover_one)(args, size, it, rep)
+                                     for size in sizes
+                                     for it in iters
+                                     for rep in range(nreps))
     difs = np.asarray(difs)
     print(difs.shape)
     difs = difs.reshape((len(sizes), len(iters), -1))
@@ -580,8 +625,8 @@ def max_flik_full(data, reg, times=None):
 
 def get_theta(nrest):
     theta = np.array([
-        [0,   3],
-        [0,   -3]
+        [0, 2],
+        [1, -1]
     ])
 
     #theta = 3.0*np.array([
@@ -612,7 +657,7 @@ def get_theta(nrest):
     #print(theta)
 
     ndep = theta.shape[0]
-    tind = np.random.uniform(-3, 0, nrest)
+    tind = np.random.uniform(-1, 0, nrest)
     trest = np.diag(tind)
     print(trest)
     theta = np.block([[theta, np.zeros((ndep, nrest))],
@@ -654,7 +699,7 @@ def plot_max2(show):
         os.mkdir('synth')
         save_data(nreps, ndata, nrest)
 
-    for i in [1]:#range(nreps):
+    for i in [2]:#range(nreps):
         data, times, truetheta, ndep = get_data(i)
 
         #data = data.subset(list(range(50)))
@@ -685,7 +730,7 @@ def plot_max2(show):
 
         print(f'Learning {i}')
         fgrad = lambda t, x: tdiff.loglik_data(t, x, times)[1]
-        theta = learn(data, fgrad=fgrad, show=show, niter=1000, step=1.0, reg=0.005,
+        theta = learn(data, fgrad=fgrad, show=show, niter=1000, step=1.0, reg=(0.2, 0.01),
                       exact=True, nsamples=150, init_theta='diag', verbose=False)
         print('theta =')
         print(theta)
@@ -767,6 +812,7 @@ if __name__ == '__main__':
     parser.add_argument('--plot', action='store_true')
     parser.add_argument('--rec', nargs=2)
     parser.add_argument('--recall', action='store_true')
+    parser.add_argument('--cval', action='store_true')
     args = parser.parse_args()
     if args.rec:
         recover_one(args, int(args.rec[0]), int(args.rec[1]), rep=0)
@@ -774,3 +820,5 @@ if __name__ == '__main__':
         recover_multi(args)
     elif args.plot:
         plot_max2(args.show)
+    elif args.cval:
+        run_cval()

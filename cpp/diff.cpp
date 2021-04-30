@@ -205,7 +205,7 @@ std::pair<seq_t, double> sample_one(const Eigen::MatrixXd& theta, const seq_t& s
 }
 
 
-Eigen::MatrixXd loglik_set_new(const Eigen::MatrixXd& theta, const seq_t& set, int nperms) {
+Eigen::MatrixXd loglik_set(const Eigen::MatrixXd& theta, const seq_t& set, int nperms) {
   std::random_device rd;
   std::mt19937 gen(rd());
   std::uniform_real_distribution<double> unif(0, 1);
@@ -246,7 +246,7 @@ Eigen::MatrixXd loglik_set_new(const Eigen::MatrixXd& theta, const seq_t& set, i
 }
 
 
-Eigen::MatrixXd loglik_set(const Eigen::MatrixXd& theta, const seq_t& set, int nperms) {
+Eigen::MatrixXd loglik_set_old(const Eigen::MatrixXd& theta, const seq_t& set, int nperms) {
   std::random_device rd;
   std::mt19937 gen(rd());
   std::uniform_real_distribution<double> unif(0, 1);
@@ -456,7 +456,7 @@ Eigen::MatrixXd loglik_data(const Eigen::MatrixXd& theta, const std::vector<seq_
 
 PYBIND11_MODULE(diff, m) {
   m.def("loglik_seq", &loglik_seq, py::return_value_policy::reference_internal);
-  m.def("loglik_set_new", &loglik_set_new, py::return_value_policy::reference_internal);
+  m.def("loglik_set_old", &loglik_set_old, py::return_value_policy::reference_internal);
   m.def("loglik_set", &loglik_set, py::return_value_policy::reference_internal);
   m.def("loglik_set_full_old", &loglik_set_full_old, py::return_value_policy::reference_internal);
   m.def("loglik_set_full", &loglik_set_full, py::return_value_policy::reference_internal);

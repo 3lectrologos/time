@@ -8,6 +8,7 @@ import pickle
 import util
 import sim
 import joblib
+import random
 from cpp import diff
 
 
@@ -301,14 +302,19 @@ def recover_one(args, size, it, rep):
     truetheta = truetheta / np.sum(np.abs(truetheta))
     print(truetheta)
     if True:
-        ind = np.random.choice(list(range(ndep, data.nitems)), size, replace=False)
+        choices = list(range(ndep, data.nitems))
+        random.seed(rep)
+        random.shuffle(choices)
+        ind = choices[:size]
+        #ind = np.random.choice(list(range(ndep, data.nitems)), size, replace=False)
     else:
         ind = [77, 32, 80, 88, 94, 37, 96, 63, 27, 40]
         foo = set(range(30, 50))
         ind = list(set(ind) | foo)
     print('IND ==>', ind)
     data = data.subset(list(range(ndep)) + list(ind))
-    theta = learn(data, show=args.show, niter=3000, step=0.5, reg=(0.2, 0.02), exact=False, nsamples=50, init_theta='diag')
+    theta = learn(data, show=args.show, niter=3000, step=0.5, reg=(0.2, 0.02),
+                  exact=False, nsamples=50, init_theta='diag', verbose=False)
     #plt.gca().clear()
     #plot_mat(theta, plt.gca(), labels=data.labels, full=True)
     #plt.savefig(f'figs/fig_{size}_{it}.png')
@@ -320,7 +326,7 @@ def recover_one(args, size, it, rep):
 
 
 def recover_multi(args):
-    sizes = [10]
+    sizes = [0, 2, 4, 6, 8, 10, 15]
     #niters = 19
     nreps = 20
 

@@ -3,24 +3,6 @@ import scipy.special
 import collections
 
 
-def mat(qs):
-    q1, q2, q12, q21 = qs
-    Q = np.array([
-        [-q1-q2, q1,      q2,      0],
-        [0,      -q2*q12, 0,       q2*q12],
-        [0,      0,       -q1*q21, q1*q21],
-        [0,      0,       0,       0]
-    ])
-    return Q
-
-
-def probs(qs):
-    Q = mat(qs)
-    R = np.linalg.inv(np.eye(4) - Q)
-    p0 = np.array([1, 0, 0, 0])
-    return p0.dot(R)
-
-
 def draw_old(Q):
     n = Q.shape[0]
     P = np.eye(n) - np.diag(1.0/np.diag(Q)) @ Q
@@ -106,21 +88,50 @@ def draw(th, nsamples=None, time=False):
             return res
 
 
-if __name__ == '__main__':
-    theta = np.array([
-        [0, 5],
-        [0, -5]
-    ])
-    ndata = 10000
-    data = draw(theta, ndata)
-    p0 = len([d for d in data if d == []]) / ndata
-    p1 = len([d for d in data if d == [0]]) / ndata
-    p2 = len([d for d in data if d == [1]]) / ndata
-    p12 = len([d for d in data if d == [0, 1]]) / ndata
-    p21 = len([d for d in data if d == [1, 0]]) / ndata
+def marg_seq(ss, idxs):
+    ssnew = []
+    for s in ss:
+        snew = [x for x in s if x in idxs]
+        ssnew.append(snew)
+    return ssnew
 
-    print(f'p0 = {p0}')
-    print(f'p1 = {p1}')
-    print(f'p2 = {p2}')
-    print(f'p12 = {p12}')
-    print(f'p21 = {p21}')
+
+def tv_seq(th1, th2, ndep, nsamples):
+    s1 = draw(th1, nsamples)
+    s2 = draw(th2, nsamples)
+    s1 = marg_seq(s1, list(range(ndep)))
+    s2 = marg_seq(s2, list(range(ndep)))
+    s1 = [tuple(s) for s in s1]
+    s2 = [tuple(s) for s in s2]
+
+    c1 = collections.Counter(s1)
+    c2 = collections.Counter(s2)
+    tv = 0
+    ks, p1, p2 = [], [], []
+    for k in set(c1.keys()) | set(c2.keys()):
+        ks.append(k)
+        p1.append(c1[k]/nsamples)
+        p2.append(c2[k]/nsamples)
+    print(ks)
+    print(p1)
+    print(p2)
+    import scipy.stats
+    return 0.5*np.sum(np.abs(np.array(p1)-np.array(p2)))
+    #return scipy.stats.entropy(p2, p1)
+
+
+if __name__ == '__main__':
+    th1 = np.array([
+        [0, 3, 0],
+        [0, -3, 0],
+        [0, 0, -2]
+    ])
+
+    th2 = np.array([
+        [0, 2, 0],
+        [1, -1, 0],
+        [0, 0, -2]
+    ])
+
+    kl = tv_seq(th1, th1, ndep=2, nsamples=10000)
+    print(kl)

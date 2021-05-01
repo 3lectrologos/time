@@ -173,8 +173,9 @@ class NAGOptimizer(Optimizer):
             xsol = self.reg_Lp(xsol, lreg*step, preg)
             #xsol = self.reg_L1(xsol, 3)
             # Check termination
-            if self.check_term(it, xsol):
-                break
+            if it > 1000:
+                if self.check_term(it, xsol):
+                    break
             if it > 2000:
                 step *= self.PSTEP
             # Plot stuff
@@ -299,7 +300,7 @@ def recover_one(args, size, it, rep):
     data, _, truetheta, ndep = get_data(it)
     deplist = list(range(ndep))
     truetheta = truetheta[np.ix_(deplist, deplist)]
-    truetheta = truetheta / np.sum(np.abs(truetheta))
+    #truetheta = truetheta / np.sum(np.abs(truetheta))
     print(truetheta)
     if True:
         choices = list(range(ndep, data.nitems))
@@ -314,28 +315,31 @@ def recover_one(args, size, it, rep):
     print('IND ==>', ind)
     data = data.subset(list(range(ndep)) + list(ind))
     theta = learn(data, show=args.show, niter=3000, step=0.5, reg=(0.2, 0.02),
-                  exact=False, nsamples=50, init_theta='diag', verbose=False)
+                  exact=False, nsamples=30, init_theta='diag', verbose=False)
     #plt.gca().clear()
     #plot_mat(theta, plt.gca(), labels=data.labels, full=True)
     #plt.savefig(f'figs/fig_{size}_{it}.png')
-    theta = theta[np.ix_(deplist, deplist)]
-    theta = theta / np.sum(np.abs(theta))
-    dif = np.sum(np.abs(theta-truetheta))
+    print(theta)
+    #theta = theta[np.ix_(deplist, deplist)]
+    dif = sim.tv_seq(truetheta, theta, ndep, nsamples=10000)
+    #theta = theta / np.sum(np.abs(theta))
+    #dif = np.sum(np.abs(theta-truetheta))
+    
     print('==>', size, '--', it, '-- dif =', dif)
     return dif
 
 
 def recover_multi(args):
-    sizes = [0, 2, 4, 6, 8, 10, 15]
+    sizes = [0, 1, 2, 3, 4]#, 6, 8, 10]#, 2, 4]#, 6, 8, 10, 15]
     #niters = 19
-    nreps = 20
+    nreps = 100
 
     #iters = range(niters)
     iters = [1]
-    difs = joblib.Parallel(n_jobs=1)(joblib.delayed(recover_one)(args, size, it, rep)
-                                     for size in sizes
-                                     for it in iters
-                                     for rep in range(nreps))
+    difs = joblib.Parallel(n_jobs=20)(joblib.delayed(recover_one)(args, size, it, rep)
+                                      for size in sizes
+                                      for it in iters
+                                      for rep in range(nreps))
     difs = np.asarray(difs)
     print(difs.shape)
     difs = difs.reshape((len(sizes), len(iters), -1))
@@ -347,6 +351,7 @@ def recover_multi(args):
     plt.gca().clear()
     plt.plot(sizes, meandifs, '-o')
     plt.show()
+    
 
 
 def get_data():
@@ -705,7 +710,7 @@ def plot_max2(show):
         os.mkdir('synth')
         save_data(nreps, ndata, nrest)
 
-    for i in [2]:#range(nreps):
+    for i in [1]:
         data, times, truetheta, ndep = get_data(i)
 
         #data = data.subset(list(range(50)))
@@ -714,7 +719,7 @@ def plot_max2(show):
         #plt.show()
         
         truetheta = truetheta[np.ix_(list(range(ndep)), list(range(ndep)))]
-        truetheta = truetheta / np.sum(np.abs(truetheta))
+        #truetheta = truetheta / np.sum(np.abs(truetheta))
         data = data.subset(list(range(ndep)))
 
         if False:
@@ -736,13 +741,15 @@ def plot_max2(show):
 
         print(f'Learning {i}')
         fgrad = lambda t, x: tdiff.loglik_data(t, x, times)[1]
-        theta = learn(data, fgrad=fgrad, show=show, niter=1000, step=1.0, reg=(0.2, 0.01),
-                      exact=True, nsamples=150, init_theta='diag', verbose=False)
+        theta = learn(data, fgrad=fgrad, show=show, niter=3000, step=1.0, reg=(0.2, 0.02),
+                      exact=True, nsamples=50, init_theta='diag', verbose=False)
         print('theta =')
         print(theta)
         res.append(theta)
-        theta = theta / np.sum(np.abs(theta))
-        dif = np.sum(np.abs(theta-truetheta))
+        #theta = theta / np.sum(np.abs(theta))
+        #dif = np.sum(np.abs(theta-truetheta))
+        dif = sim.tv_seq(truetheta, theta, ndep, nsamples=10000)
+        print('dif =', dif)
         difs.append(dif)
         #vals.append(val)
         #savs.append(sav)
@@ -816,12 +823,12 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--show', action='store_true')
     parser.add_argument('--plot', action='store_true')
-    parser.add_argument('--rec', nargs=2)
+    parser.add_argument('--rec', nargs=3)
     parser.add_argument('--recall', action='store_true')
     parser.add_argument('--cval', action='store_true')
     args = parser.parse_args()
     if args.rec:
-        recover_one(args, int(args.rec[0]), int(args.rec[1]), rep=0)
+        recover_one(args, int(args.rec[0]), int(args.rec[1]), rep=int(args.rec[2]))
     elif args.recall:
         recover_multi(args)
     elif args.plot:

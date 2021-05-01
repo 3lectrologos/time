@@ -116,8 +116,8 @@ def tv_seq(th1, th2, ndep, nsamples):
     print(p1)
     print(p2)
     import scipy.stats
-    return 0.5*np.sum(np.abs(np.array(p1)-np.array(p2)))
-    #return scipy.stats.entropy(p2, p1)
+    #return 0.5*np.sum(np.abs(np.array(p1)-np.array(p2)))
+    return scipy.stats.entropy(p2, p1)
 
 
 if __name__ == '__main__':

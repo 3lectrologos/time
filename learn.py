@@ -298,7 +298,7 @@ def run_cval():
 Result = collections.namedtuple('Result', ['data', 'ndep', 'truetheta', 'theta', 'dif'])
 
 
-def recover_one(args, feval, size, it, rep):
+def recover_one(args, size, it, rep, feval=None):
     print('Running |', size, '--', it, '-- rep', rep)
     #data, _, truetheta, ndep = get_data(it)
     data = get_real()
@@ -315,7 +315,7 @@ def recover_one(args, feval, size, it, rep):
         ind = list(set(ind) | foo)
     print('IND ==>', ind)
     data = data.subset(list(range(ndep)) + list(ind))
-    theta = learn(data, show=args.show, niter=3000, step=0.5, reg=(0.2, 0.01),
+    theta = learn(data, show=args.show, niter=3000, step=0.5, reg=(0.2, 0.02),
                   exact=False, nsamples=30, init_theta='diag', verbose=False)
     print('Done |', size, '--', it, '-- rep', rep)
     dif = feval(theta, truetheta, ndep)
@@ -323,14 +323,14 @@ def recover_one(args, feval, size, it, rep):
 
 
 def recover_multi(args):
-    sizes = [0, 5]#, 1, 2, 3, 4]#, 6, 8, 10]#, 2, 4]#, 6, 8, 10, 15]
+    sizes = [0, 10, 20]#, 1, 2, 3, 4]#, 6, 8, 10]#, 2, 4]#, 6, 8, 10, 15]
     #niters = 19
-    nreps = 3
+    nreps = 20
 
     #iters = range(niters)
     iter = 1
     feval = lambda t1, t2, ndep: t1[0, 1] - t1[1, 0]
-    res = joblib.Parallel(n_jobs=20)(joblib.delayed(recover_one)(args, feval, size, iter, rep)
+    res = joblib.Parallel(n_jobs=20)(joblib.delayed(recover_one)(args, size, iter, rep, feval)
                                      for size in sizes
                                      for rep in range(nreps))
     res = [Result(*r) for r in res]
@@ -355,22 +355,28 @@ def get_real():
             cutoff = 0.03
             keep = []
             for idx in range(data.nitems):
-                if data.marginals[idx] < 0.03 and data.marginals[idx] > 0.01:
+                if data.marginals[idx] > 0.01:
                     keep.append(idx)
-            print(f'genes: {[data.labels[x] for x in keep]}')
-            keep = data.idx(['MDM2(A)', 'CDK4(A)']) + keep
+            #print(f'genes: {[data.labels[x] for x in keep]}')
+            #keep = data.idx(['MDM2(A)', 'CDK4(A)']) + keep
+            #labels = ['TP53', 'MDM2(A)', 'MDM4(A)', 'CDKN2A/B(D)', 'CDK4(A)', 'NF1', 'IDH1', 'PTEN', 'PTEN(D)', 'EGFR', 'RB1(D)', 'PDGFRA(A)', 'PIK3CA', 'TP53(D)']
+            labels = ['EGFR', 'EGFR(A)']
+            extra = data.idx(labels)
+            keep = list(set(keep) - set(extra))
+            keep = extra + keep
         else:
             labels = ['TP53', 'IDH1']
             keep = data.idx(labels)
         data = data.subset(keep)
+        print(data)
     return data
 
 
 def run_main(args):
     data = get_real()
     print(f'Running on {data}')
-    theta = learn(data, show=args.show, niter=3000, step=0.5, reg=(0.3, 0.01),
-                  exact=False, nsamples=30, init_theta='diag', verbose=True)
+    theta = learn(data, show=args.show, niter=3000, step=0.5, reg=(0.2, 0.01),
+                  exact=False, nsamples=100, init_theta='diag', verbose=True)
 
 
 def run_multi():

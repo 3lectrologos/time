@@ -57,13 +57,9 @@ class Optimizer:
         self.thetas = [np.zeros_like(xinit) for i in range(self.BUF_SIZE)]
 
     def check_term(self, it, xsol):
-        self.thetas[it % self.BUF_SIZE] = xsol
-        maxdif = np.abs(xsol - self.thetas[(it+1) % self.BUF_SIZE]).max()
+        maxdif = np.abs(xsol - self.thetas[it % self.BUF_SIZE]).max()
+        self.thetas[it % self.BUF_SIZE] = xsol.copy()
         #print(maxdif)
-        #
-        #arg = np.abs(xsol - thetas[(it+1) % self.BUF_SIZE]).argmax()
-        #
-        #print(maxdif, '--', arg)
         if maxdif < self.MIN_DIF:
             return True
         else:
@@ -171,7 +167,7 @@ class NAGOptimizer(Optimizer):
             mom = self.GAMMA*mom + step*g
             # L1-projection
             xsol = self.reg_Lp(xsol, lreg*step, preg)
-            #xsol = self.reg_L1(xsol, 3)
+            #xsol = self.reg_L1L2(xsol, lreg*step)
             # Check termination
             if it > 1000:
                 if self.check_term(it, xsol):
@@ -268,8 +264,8 @@ def cval(data, reg, nfolds):
         rest = set(range(nfolds)) - set([i])
         dtrain = datasets.Data.merge([folds[r] for r in rest])
         dtest = folds[i]
-        theta = learn(dtrain, show=False, niter=3000, step=1.0, reg=reg, exact=False,
-                      nsamples=300, init_theta='diag', verbose=False)
+        theta = learn(dtrain, show=False, niter=3000, step=0.5, reg=reg, exact=False,
+                      nsamples=30, init_theta='diag', verbose=True)
         lik = diff.loglik_data_full(theta, dtest)[0]
         liks.append(lik)
     return liks
@@ -277,16 +273,20 @@ def cval(data, reg, nfolds):
 
 def run_cval():
     it = 2
-    regs = [0.001, 0.01, 0.02, 0.03, 0.1]
-    regparams = [(0.1, r) for r in regs]
-    size = 10
+    regs = [0.005, 0.008, 0.01, 0.02]
+    #regs = [0.01, 0.05, 0.1, 0.2]
+    regparams = [(0.2, r) for r in regs]
+    size = 20
     nfolds = 5
     data, _, _, ndep = get_data(it)
-    #ind = np.random.choice(list(range(ndep, data.nitems)), size, replace=False)
+    #data = get_real()
+    #ndep = 0
+
     ind = list(range(ndep, ndep+size))
     data = data.subset(list(range(ndep)) + list(ind))
-    res = joblib.Parallel(n_jobs=len(regs))(joblib.delayed(cval)(data, reg, nfolds)
-                                            for reg in regparams)
+    njobs = min(20, len(regs))
+    res = joblib.Parallel(n_jobs=njobs)(joblib.delayed(cval)(data, reg, nfolds)
+                                        for reg in regparams)
     res = np.array(res).reshape((-1, nfolds))
     means = np.mean(res, axis=1)
     stds = np.std(res, axis=1)
@@ -300,25 +300,22 @@ Result = collections.namedtuple('Result', ['data', 'ndep', 'truetheta', 'theta',
 
 def recover_one(args, size, it, rep, feval=None):
     print('Running |', size, '--', it, '-- rep', rep)
-    #data, _, truetheta, ndep = get_data(it)
-    data = get_real()
-    truetheta = None
-    ndep = 2
+    data, _, truetheta, ndep = get_data(it)
+    #data = get_real()
+    #truetheta = None
+    #ndep = 2
     if True:
         choices = list(range(ndep, data.nitems))
         random.seed(rep)
         random.shuffle(choices)
         ind = choices[:size]
-    else:
-        ind = [77, 32, 80, 88, 94, 37, 96, 63, 27, 40]
-        foo = set(range(30, 50))
-        ind = list(set(ind) | foo)
+        #ind  = list(range(ndep, ndep+size))
     print('IND ==>', ind)
     data = data.subset(list(range(ndep)) + list(ind))
     theta = learn(data, show=args.show, niter=3000, step=0.5, reg=(0.2, 0.02),
-                  exact=False, nsamples=30, init_theta='diag', verbose=False)
+                  exact=False, nsamples=30, init_theta='diag', verbose=True)
     print('Done |', size, '--', it, '-- rep', rep)
-    dif = feval(theta, truetheta, ndep)
+    dif = feval(theta, theta, ndep)
     return data, ndep, truetheta, theta, dif
 
 
@@ -327,9 +324,8 @@ def recover_multi(args):
     #niters = 19
     nreps = 20
 
-    #iters = range(niters)
     iter = 1
-    feval = lambda t1, t2, ndep: t1[0, 1] - t1[1, 0]
+    feval = 0#lambda t1, t2, ndep: t1[0, 1] - t1[1, 0]
     res = joblib.Parallel(n_jobs=20)(joblib.delayed(recover_one)(args, size, iter, rep, feval)
                                      for size in sizes
                                      for rep in range(nreps))
@@ -352,17 +348,22 @@ def get_real():
     if True:
         data = datasets.tcga('gbm', alt=False, mutonly=False)
         if True:
-            cutoff = 0.03
+            cutoff = 0.01
             keep = []
             for idx in range(data.nitems):
-                if data.marginals[idx] > 0.01:
+                if data.marginals[idx] > cutoff:
                     keep.append(idx)
-            #print(f'genes: {[data.labels[x] for x in keep]}')
-            #keep = data.idx(['MDM2(A)', 'CDK4(A)']) + keep
-            #labels = ['TP53', 'MDM2(A)', 'MDM4(A)', 'CDKN2A/B(D)', 'CDK4(A)', 'NF1', 'IDH1', 'PTEN', 'PTEN(D)', 'EGFR', 'RB1(D)', 'PDGFRA(A)', 'PIK3CA', 'TP53(D)']
-            labels = ['EGFR', 'EGFR(A)']
+            #labels = ['EGFR', 'EGFR(A)']
+            labels = []#'MDM2(A)', 'CDK4(A)']
             extra = data.idx(labels)
             keep = list(set(keep) - set(extra))
+            #
+            margs = [data.marginals[idx] for idx in keep]
+            comb = zip(keep, margs)
+            comb = sorted(comb, key=lambda x: x[1], reverse=True)
+            keep, _ = zip(*comb)
+            keep = list(keep)
+            #
             keep = extra + keep
         else:
             labels = ['TP53', 'IDH1']
@@ -448,8 +449,8 @@ def tdiff_wrapper(x, g, data, times):
 
 def get_theta(nrest):
     theta = np.array([
-        [0, 2],
-        [1, -1]
+        [0, 3],
+        [0, -3]
     ])
 
     #theta = 3.0*np.array([
@@ -480,7 +481,7 @@ def get_theta(nrest):
     #print(theta)
 
     ndep = theta.shape[0]
-    tind = np.random.uniform(-1, 0, nrest)
+    tind = np.random.uniform(-3, 0, nrest)
     trest = np.diag(tind)
     print(trest)
     theta = np.block([[theta, np.zeros((ndep, nrest))],
@@ -504,7 +505,7 @@ def get_data(i):
 
 
 def plot_max2(show):
-    nreps = 20
+    nreps = 10
     ndata = 1000
     nrest = 100
     
@@ -517,7 +518,7 @@ def plot_max2(show):
         os.mkdir('synth')
         save_data(nreps, ndata, nrest)
 
-    for i in [1]:
+    for i in range(nreps):
         data, times, truetheta, ndep = get_data(i)
 
         #data = data.subset(list(range(50)))

@@ -1,5 +1,6 @@
 import csv
 import random
+import math
 import numpy as np
 import pandas as pd
 from collections import defaultdict
@@ -137,7 +138,7 @@ class Data:
         batch_size = min(batch_size, len(self))
         batch_idxs = np.arange(len(self))
         np.random.shuffle(batch_idxs)
-        batch_idxs = np.array_split(batch_idxs, len(self)/batch_size)
+        batch_idxs = np.array_split(batch_idxs, math.ceil(len(self)/batch_size))
         for batch_idx in batch_idxs:
             # TODO: This listcomp is computationally inefficient.
             batch_list = [[self[idx] for idx in batch_idx]]

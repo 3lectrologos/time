@@ -310,22 +310,23 @@ def recover_one(args, size, it, rep, feval=None):
         random.shuffle(choices)
         ind = choices[:size]
         #ind  = list(range(ndep, ndep+size))
-    print('IND ==>', ind)
     data = data.subset(list(range(ndep)) + list(ind))
     theta = learn(data, show=args.show, niter=3000, step=0.5, reg=(0.2, 0.02),
-                  exact=False, nsamples=30, init_theta='diag', verbose=True)
+                  exact=False, nsamples=30, init_theta='diag', verbose=False)
     print('Done |', size, '--', it, '-- rep', rep)
-    dif = feval(theta, theta, ndep)
+    tt = truetheta[np.ix_(list(range(ndep)), list(range(ndep)))]
+    dif = feval(theta, tt, ndep)
     return data, ndep, truetheta, theta, dif
 
 
 def recover_multi(args):
-    sizes = [0, 10, 20]#, 1, 2, 3, 4]#, 6, 8, 10]#, 2, 4]#, 6, 8, 10, 15]
+    sizes = [0, 2, 4, 6, 8, 10]
     #niters = 19
     nreps = 20
+    iter = 1    
+    #feval = 0#lambda t1, t2, ndep: t1[0, 1] - t1[1, 0]
+    feval = lambda t1, t2, ndep: sim.dist(t1, t2, ndep, 10000)
 
-    iter = 1
-    feval = 0#lambda t1, t2, ndep: t1[0, 1] - t1[1, 0]
     res = joblib.Parallel(n_jobs=20)(joblib.delayed(recover_one)(args, size, iter, rep, feval)
                                      for size in sizes
                                      for rep in range(nreps))

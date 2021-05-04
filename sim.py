@@ -1,6 +1,7 @@
 import numpy as np
 import scipy.special
 import collections
+from cpp import diff
 
 
 def draw_old(Q):
@@ -92,17 +93,15 @@ def marg_seq(ss, idxs):
     ssnew = []
     for s in ss:
         snew = [x for x in s if x in idxs]
-        ssnew.append(snew)
+        ssnew.append(tuple(snew))
     return ssnew
 
 
-def tv_seq(th1, th2, ndep, nsamples):
-    s1 = draw(th1, nsamples)
-    s2 = draw(th2, nsamples)
+def dist(th1, th2, ndep, nsamples):
+    s1 = diff.draw(th1, nsamples)
+    s2 = diff.draw(th2, nsamples)
     s1 = marg_seq(s1, list(range(ndep)))
     s2 = marg_seq(s2, list(range(ndep)))
-    s1 = [tuple(s) for s in s1]
-    s2 = [tuple(s) for s in s2]
 
     c1 = collections.Counter(s1)
     c2 = collections.Counter(s2)

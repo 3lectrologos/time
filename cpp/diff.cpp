@@ -446,12 +446,46 @@ Eigen::MatrixXd loglik_data(const Eigen::MatrixXd& theta, const std::vector<seq_
 }
 
 
-/*
-Eigen::MatrixXd loglik_data(const Eigen::MatrixXd& theta, const std::vector<seq_t>& data, int nperms) {
-  std::vector<double> times = std::vector<double>(data.size(), NOTIME);
-  return loglik_data(theta, data, nperms, times);
+std::vector<seq_t> draw(const Eigen::MatrixXd& theta, int nsamples) {
+  std::random_device rd;
+  std::mt19937 gen(rd());
+  std::vector<seq_t> res;
+  auto n = theta.rows();
+  for (auto cnt=0; cnt < nsamples; cnt++) {
+    seq_t seq;
+    double tcur = 0;
+    seq_t rest(n);
+    std::exponential_distribution<double> dexp(1.0);
+    auto tstop = dexp(gen);
+    for (auto i=0; i < n; i++) rest[i] = i;
+    while (true) {
+      if (rest.size() == 0) break;
+      dseq_t sumth(rest.size());
+      int r = 0;
+      for (auto j : rest) {
+        sumth[r] = theta(j, j);
+        for (auto i : seq) {
+          sumth[r] += theta(i, j);
+        }
+        r++;
+      }
+      double lse = logsumexp(sumth);
+      std::exponential_distribution<double> dist(exp(lse));
+      tcur += dist(gen);
+      if (tcur > tstop) break;
+      dseq_t ps(rest.size());
+      for (auto i=0; i < rest.size(); i++) {
+        ps[i] = exp(sumth[i]-lse);
+      }
+      std::discrete_distribution<> dchoice(ps.cbegin(), ps.cend());
+      auto idx = dchoice(gen);
+      seq.push_back(rest[idx]);
+      rest.erase(rest.begin()+idx);
+    }
+    res.push_back(seq);
+  }
+  return res;
 }
-*/
 
 
 PYBIND11_MODULE(diff, m) {
@@ -462,4 +496,5 @@ PYBIND11_MODULE(diff, m) {
   m.def("loglik_set_full", &loglik_set_full, py::return_value_policy::reference_internal);
   m.def("loglik_data", &loglik_data, py::return_value_policy::reference_internal);
   m.def("loglik_data_full", &loglik_data_full, py::return_value_policy::reference_internal);
+  m.def("draw", &draw, py::return_value_policy::reference_internal);
 }

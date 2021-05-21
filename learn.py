@@ -311,8 +311,8 @@ def recover_one(args, size, it, rep, feval=None):
         ind = choices[:size]
         #ind  = list(range(ndep, ndep+size))
         data = data.subset(list(range(ndep)) + list(ind))
-    theta = learn(data, show=args.show, niter=3000, step=0.2, reg=(1.0, 0.08),
-                  exact=False, nsamples=20, init_theta='diag', verbose=True)
+    theta = learn(data, show=args.show, niter=3000, step=0.2, reg=(1.0, 0.05),
+                  exact=False, nsamples=10, init_theta='diag', verbose=True)
     #
     with open('tmptheta.pcl', 'wb') as fout:
         pickle.dump((data, theta), fout)
@@ -354,16 +354,20 @@ def real_exp(size):
                                                            exact=False, nsamples=20, init_theta='diag', verbose=True)
                                      for i in range(niter))
     res = np.array(res)
-    with open(f'real_{size}.pcl', 'wb') as fout:
+    with open(f'real_pan_{size}.pcl', 'wb') as fout:
         pickle.dump((data, res), fout)
 
 
 def plot_real(size):
-    with open(f'real_old_{size}.pcl', 'rb') as fin:
+    with open(f'real_pan_{size}.pcl', 'rb') as fin:
         data, res = pickle.load(fin)
-    dif = np.amax(res, axis=0) - np.amin(res, axis=0)
-    #dif = np.std(res, axis=0)
-    idxs = range(19)
+    #
+    #for r in res:
+    #    print(f'{r[1, 4]:.2f} -- {r[4, 1]:.2f}')
+    #
+    #dif = np.amax(res, axis=0) - np.amin(res, axis=0)
+    dif = np.std(res, axis=0)
+    idxs = range(20)
     dif = dif[np.ix_(idxs, idxs)]
     labels = data.labels
     util.plot_matrix(dif,
@@ -382,8 +386,8 @@ def get_real(size):
     #data = data.subset(data.idx(labels))
 
     if True:
-        #data = datasets.tcga('gbm', alt=False, mutonly=False)
-        data = datasets.comet('gbm')
+        data = datasets.tcga('gbm', alt=False, mutonly=False)
+        #data = datasets.comet('gbm')
         if True:
             #cutoff = 0.03
             #keep = []
@@ -396,7 +400,7 @@ def get_real(size):
             #
             labels = ['TP53', 'MDM2(A)', 'MDM4(A)', 'CDKN2A(D)', 'CDK4(A)',
                       'NF1', 'IDH1', 'PTEN', 'PTEN(D)', 'EGFR', 'EGFR(A)',
-                      'RB1(D)', 'PDGFRA(A)', 'FAF1(D)', 'SPTA1', 'PIK3CA',
+                      'RB1(D)', 'PDGFRA', 'PDGFRA(A)', 'FAF1(D)', 'SPTA1', 'PIK3CA',
                       'OBSCN', 'CNTNAP2', 'TP53(D)', 'LRP2']
             extra = data.idx(labels)
             
@@ -412,7 +416,7 @@ def get_real(size):
         else:
             labels = ['TP53', 'MDM2(A)', 'MDM4(A)', 'CDKN2A(D)', 'CDK4(A)',
                       'NF1', 'IDH1', 'PTEN', 'PTEN(D)', 'EGFR', 'EGFR(A)',
-                      'RB1(D)', 'PDGFRA(A)', 'FAF1(D)', 'SPTA1', 'PIK3CA',
+                      'RB1(D)', 'PDGFRA', 'PDGFRA(A)', 'FAF1(D)', 'SPTA1', 'PIK3CA',
                       'OBSCN', 'CNTNAP2', 'TP53(D)', 'LRP2']
             #labels += ['EGFR(A)']
             #labels = ['TP53', 'IDH1']

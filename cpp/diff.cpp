@@ -491,7 +491,7 @@ Eigen::MatrixXd loglik_data(const Eigen::MatrixXd& theta, const std::vector<seq_
   Eigen::MatrixXd grad = Eigen::MatrixXd::Zero(n, n);
 #pragma omp parallel for reduction(+:grad)
   for (auto i=0; i < data.size(); i++) {
-    if (data[i].size() < 6) {
+    if (data[i].size() < 5) {
       grad += loglik_set_full(theta, data[i]).second;
     } else {
       grad += loglik_set(theta, data[i], nperms);
@@ -507,7 +507,7 @@ Eigen::MatrixXd loglik_data_uniform(const Eigen::MatrixXd& theta, const std::vec
   Eigen::MatrixXd grad = Eigen::MatrixXd::Zero(n, n);
 #pragma omp parallel for reduction(+:grad)
   for (auto i=0; i < data.size(); i++) {
-    if (data[i].size() < 6) {
+    if (data[i].size() < 5) {
       grad += loglik_set_full(theta, data[i]).second;
     } else {
       grad += loglik_set_uniform(theta, data[i], nperms);

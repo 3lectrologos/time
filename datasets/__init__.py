@@ -12,14 +12,23 @@ COMET_DIR = os.path.join(BASE_DIR, 'comet')
 MISC_DIR = os.path.join(BASE_DIR, 'misc')
 
 
+old_combos = [
+    #(['CDKN2A(D)', 'CDKN2B(D)'], 'CDKN2A/B(D)'),
+    #(['KDR(A)', 'KIT(A)', 'PDGFRA(A)'], 'PDGFRA(A)'),
+    #(['CYSLTR2(D)', 'RB1(D)'], 'RB1(D)'),
+    #(['CDKN2C(D)', 'FAF1(D)'], 'CDKN2C(D)'),
+    #(['HIST2H3D(A)', 'NOTCH2(A)'], 'NOTCH2(A)'),
+    #(['FGF19(A)', 'FGF3(A)', 'FGF4(A)', 'CCND1(A)'], 'CCND1(A)'),
+    #(['PIK3CA(A)', 'SOX2(A)'], 'PIK3CA(A)')
+]
+
 combos = [
-    (['CDKN2A(D)', 'CDKN2B(D)'], 'CDKN2A/B(D)'),
-    (['KDR(A)', 'KIT(A)', 'PDGFRA(A)'], 'PDGFRA(A)'),
-    (['CYSLTR2(D)', 'RB1(D)'], 'RB1(D)'),
-    (['CDKN2C(D)', 'FAF1(D)'], 'CDKN2C(D)'),
-    (['HIST2H3D(A)', 'NOTCH2(A)'], 'NOTCH2(A)'),
-    (['FGF19(A)', 'FGF3(A)', 'FGF4(A)', 'CCND1(A)'], 'CCND1(A)'),
-    (['PIK3CA(A)', 'SOX2(A)'], 'PIK3CA(A)')
+    (['INPP5A(D)', 'NKX6-2(D)', 'CFAP46(D)', 'ADGRA1(D)', 'KNDC1(D)', 'UTF1(D)', 'VENTX(D)', 'MIR-202/3P(D)', 'ADAM8(D)', 'TUBGCP2(D)', 'ZNF511(D)', 'CALY(D)', 'PRAP1(D)', 'FUOM(D)', 'ECHS1(D)', 'MIR-3944/3944(D)', 'PAOX(D)', 'MTG1(D)'], 'PAOX,...(D)'),
+    (['CDK4(A)', 'ARHGAP9(A)'], 'CDK4(A)'),
+    (['CDKN2C(D)', 'FAF1(D)'], 'FAF1(D)'),
+    (['EGFR(A)', 'POM121L12(A)', 'ZPBP(A)'], 'EGFR(A)'),
+    (['SOX2-OT(A)', 'PIK3CA(A)'], 'PIK3CA(A),...'),
+    (['MYCN(A)', 'MYCNOS(A)'], 'MYCN(A),...')
 ]
 
 coad_combos = [
@@ -77,9 +86,22 @@ def get_alt(type):
     genes = list(alt.columns[2:])
     data = Data([mat], labels=genes)
     # XXX: temp
-    data = combine_genes(data, coad_combos)
+    #data = combine_genes(data, coad_combos)
     #
     return data
+
+
+#def tcga_gbm_like_comet():
+#    data = datasets.comet('gbm')
+#    res = []
+#    for label in data.labels:
+#        lst = label.split(',')
+#        for lab in lst:
+#            if lab.endswith('(D)') or lab.endswith('(A)'):
+#                res.append(lab[:-3])
+#            else:
+#                res.append(lab)
+#    data = tcga('gbm')
 
 
 def tcga(type, alt=False, mutonly=False):

@@ -347,13 +347,20 @@ def recover_multi(args):
     plt.show()
 
 
-def real_exp():
+def real_exp(size):
     niter = 20
-    data = get_real()
+    data = get_real(size)
     res = joblib.Parallel(n_jobs=20)(joblib.delayed(learn)(data, show=False, niter=3000, step=0.2, reg=(1.0, 0.1),
                                                            exact=False, nsamples=20, init_theta='diag', verbose=True)
                                      for i in range(niter))
     res = np.array(res)
+    with open(f'real_{size}.pcl', 'wb') as fout:
+        pickle.dump((data, res), fout)
+
+
+def plot_real(size):
+    with open(f'real_{size}.pcl', 'rb') as fin:
+        data, res = pickle.load(fin)
     dif = np.amax(res, axis=0) - np.amin(res, axis=0)
     labels = data.labels
     util.plot_matrix(dif,
@@ -361,10 +368,9 @@ def real_exp():
                      vmin=-5, vmid=0, vmax=5, cmap='PuOr_r', notext=False,
                      axes_fontsize=8)
     plt.show()
-    
 
 
-def get_real():
+def get_real(size):
     data = datasets.hazard()
     #labels = ['TP53(M)', 'MDM2(A)', 'MDM4(A)', 'CDKN2A(D)', 'CDK4(A)',
     #          'NF1(M)', 'IDH1(M)', 'PTEN(M)', 'PTEN(D)', 'EGFR(M)',
@@ -376,22 +382,22 @@ def get_real():
         #data = datasets.tcga('gbm', alt=False, mutonly=False)
         data = datasets.comet('gbm')
         if True:
-            cutoff = 0.03
-            keep = []
-            for idx in range(data.nitems):
-                if data.marginals[idx] > cutoff:
-                    keep.append(idx)
-            labels = []
-            extra = data.idx(labels)
-            keep = list(set(keep) - set(extra))
+            #cutoff = 0.03
+            #keep = []
+            #for idx in range(data.nitems):
+            #    if data.marginals[idx] > cutoff:
+            #        keep.append(idx)
+            #labels = []
+            #extra = data.idx(labels)
+            #keep = list(set(keep) - set(extra))
             #
+            keep = range(data.nitems)
             margs = [data.marginals[idx] for idx in keep]
             comb = zip(keep, margs)
             comb = sorted(comb, key=lambda x: x[1], reverse=True)
             keep, _ = zip(*comb)
-            keep = list(keep)
+            keep = keep[:size]
             #
-            keep = extra + keep
         else:
             labels = ['TP53', 'MDM2(A)', 'MDM4(A)', 'CDKN2A(D)', 'CDK4(A)',
                       'NF1', 'IDH1', 'PTEN', 'PTEN(D)', 'EGFR',
@@ -619,7 +625,8 @@ if __name__ == '__main__':
     parser.add_argument('--recall', action='store_true')
     parser.add_argument('--cval', action='store_true')
     parser.add_argument('--main', action='store_true')
-    parser.add_argument('--real', action='store_true')
+    parser.add_argument('--real', nargs=1)
+    parser.add_argument('--plotreal', nargs=1)
     args = parser.parse_args()
     if args.rec:
         recover_one(args, int(args.rec[0]), int(args.rec[1]), rep=int(args.rec[2]))
@@ -632,4 +639,6 @@ if __name__ == '__main__':
     elif args.main:
         run_main(args)
     elif args.real:
-        real_exp()
+        real_exp(int(args.real[0]))
+    elif args.plotreal:
+        plot_real(int(args.plotreal[0]))

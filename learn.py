@@ -167,7 +167,7 @@ class NAGOptimizer(Optimizer):
             mom = self.GAMMA*mom + step*g
             # L1-projection
             xsol = self.reg_Lp(xsol, lreg*step, preg)
-            #xsol = self.reg_L1Linf(xsol, lreg*step)
+            #xsol = self.reg_L1L2(xsol, lreg*step)
             # Check termination
             if it > 1000:
                 if self.check_term(it, xsol):
@@ -301,7 +301,7 @@ Result = collections.namedtuple('Result', ['data', 'ndep', 'truetheta', 'theta',
 def recover_one(args, size, it, rep, feval=None):
     print('Running |', size, '--', it, '-- rep', rep)
     #data, _, truetheta, ndep = get_data(it)
-    data = get_real()
+    data = get_real(0)
     truetheta = None
     ndep = 2
     if False:
@@ -311,7 +311,7 @@ def recover_one(args, size, it, rep, feval=None):
         ind = choices[:size]
         #ind  = list(range(ndep, ndep+size))
         data = data.subset(list(range(ndep)) + list(ind))
-    theta = learn(data, show=args.show, niter=3000, step=0.2, reg=(1.0, 0.1),
+    theta = learn(data, show=args.show, niter=3000, step=0.2, reg=(1.0, 0.08),
                   exact=False, nsamples=20, init_theta='diag', verbose=True)
     #
     with open('tmptheta.pcl', 'wb') as fout:
@@ -350,7 +350,7 @@ def recover_multi(args):
 def real_exp(size):
     niter = 20
     data = get_real(size)
-    res = joblib.Parallel(n_jobs=20)(joblib.delayed(learn)(data, show=False, niter=3000, step=0.2, reg=(1.0, 0.1),
+    res = joblib.Parallel(n_jobs=20)(joblib.delayed(learn)(data, show=False, niter=3000, step=0.2, reg=(1.0, 0.08),
                                                            exact=False, nsamples=20, init_theta='diag', verbose=True)
                                      for i in range(niter))
     res = np.array(res)
@@ -359,9 +359,12 @@ def real_exp(size):
 
 
 def plot_real(size):
-    with open(f'real_{size}.pcl', 'rb') as fin:
+    with open(f'real_old_{size}.pcl', 'rb') as fin:
         data, res = pickle.load(fin)
     dif = np.amax(res, axis=0) - np.amin(res, axis=0)
+    #dif = np.std(res, axis=0)
+    idxs = range(19)
+    dif = dif[np.ix_(idxs, idxs)]
     labels = data.labels
     util.plot_matrix(dif,
                      xlabels=labels, ylabels=labels,
@@ -391,16 +394,24 @@ def get_real(size):
             #extra = data.idx(labels)
             #keep = list(set(keep) - set(extra))
             #
-            keep = range(data.nitems)
+            labels = ['TP53', 'MDM2(A)', 'MDM4(A)', 'CDKN2A(D)', 'CDK4(A)',
+                      'NF1', 'IDH1', 'PTEN', 'PTEN(D)', 'EGFR', 'EGFR(A)',
+                      'RB1(D)', 'PDGFRA(A)', 'FAF1(D)', 'SPTA1', 'PIK3CA',
+                      'OBSCN', 'CNTNAP2', 'TP53(D)', 'LRP2']
+            extra = data.idx(labels)
+            
+            keep = list(set(range(data.nitems)) - set(extra))
             margs = [data.marginals[idx] for idx in keep]
             comb = zip(keep, margs)
             comb = sorted(comb, key=lambda x: x[1], reverse=True)
             keep, _ = zip(*comb)
-            keep = keep[:size]
+            keep = list(keep[:size])
+
+            keep = extra + keep
             #
         else:
             labels = ['TP53', 'MDM2(A)', 'MDM4(A)', 'CDKN2A(D)', 'CDK4(A)',
-                      'NF1', 'IDH1', 'PTEN', 'PTEN(D)', 'EGFR',
+                      'NF1', 'IDH1', 'PTEN', 'PTEN(D)', 'EGFR', 'EGFR(A)',
                       'RB1(D)', 'PDGFRA(A)', 'FAF1(D)', 'SPTA1', 'PIK3CA',
                       'OBSCN', 'CNTNAP2', 'TP53(D)', 'LRP2']
             #labels += ['EGFR(A)']

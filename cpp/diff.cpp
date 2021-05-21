@@ -165,7 +165,7 @@ std::vector<seq_t> all_perms(const seq_t& set) {
 }
 
 
-std::pair<seq_t, double> sample_one(const Eigen::MatrixXd& theta, const seq_t& set, std::mt19937& gen) {
+std::pair<seq_t, double> sample_one_old(const Eigen::MatrixXd& theta, const seq_t& set, std::mt19937& gen) {
   int n = theta.rows();
   seq_t setrest(set.cbegin(), set.cend());
   std::sort(setrest.begin(), setrest.end());
@@ -205,13 +205,70 @@ std::pair<seq_t, double> sample_one(const Eigen::MatrixXd& theta, const seq_t& s
 }
 
 
+std::pair<seq_t, double> sample_one(const Eigen::MatrixXd& theta, const seq_t& set, std::mt19937& gen) {
+  int n = theta.rows();
+  seq_t rest(n);
+  for(auto i=0; i < n; i++) rest[i] = i;
+  seq_t setrest(set.cbegin(), set.cend());
+  std::sort(setrest.begin(), setrest.end());
+  seq_t result;
+  double logprob = 0;
+
+  for (auto k=0; k < set.size(); k++) {
+    dseq_t logprobs(setrest.size());
+    int r = 0;
+    for (auto i : setrest) {
+      for (auto j : setrest) {
+        if (i != j) {
+          logprobs[r] += theta(i, j);
+        }
+      }
+
+      dseq_t sumth(rest.size()-1);
+      int rr = 0;
+      for (auto j : rest) {
+        if (j == i) continue;
+        sumth[rr] += theta(j, j);
+        for (auto v : result) {
+          sumth[rr] += theta(v, j);
+        }
+        sumth[rr] += theta(i, j);
+        rr++;
+      }
+      double lse = logaddexp(0, logsumexp(sumth));
+      logprobs[r] -= lse;
+      r++;
+    }
+
+    double logsumprobs = logsumexp(logprobs);
+    dseq_t probs(logprobs);
+    for (auto i=0; i < probs.size(); i++) {
+      probs[i] = exp(probs[i]);
+    }
+    
+    std::discrete_distribution<> dist(probs.cbegin(), probs.cend());
+    auto idx = dist(gen);
+    auto next = setrest[idx];
+    logprob += (logprobs[idx] - logsumprobs);
+
+    // Remove `next` from `rest` and `setrest`, and add to `result`.
+    result.push_back(next);
+    setrest.erase(setrest.begin()+idx);
+    auto it = std::find(rest.begin(), rest.end(), next);
+    rest.erase(it);
+  }
+
+  return std::make_pair(result, logprob);
+}
+
+
 Eigen::MatrixXd loglik_set(const Eigen::MatrixXd& theta, const seq_t& set, int nperms) {
   std::random_device rd;
   std::mt19937 gen(rd());
   std::uniform_real_distribution<double> unif(0, 1);
   Eigen::MatrixXd grad = Eigen::MatrixXd::Zero(theta.rows(), theta.rows());
 
-  int burnin = 0;
+  int burnin = 5;
   std::vector<seq_t> result;
   //int naccept = 0;
   auto res = sample_one(theta, set, gen);
@@ -246,13 +303,13 @@ Eigen::MatrixXd loglik_set(const Eigen::MatrixXd& theta, const seq_t& set, int n
 }
 
 
-Eigen::MatrixXd loglik_set_old(const Eigen::MatrixXd& theta, const seq_t& set, int nperms) {
+Eigen::MatrixXd loglik_set_uniform(const Eigen::MatrixXd& theta, const seq_t& set, int nperms) {
   std::random_device rd;
   std::mt19937 gen(rd());
   std::uniform_real_distribution<double> unif(0, 1);
   Eigen::MatrixXd grad = Eigen::MatrixXd::Zero(theta.rows(), theta.rows());
 
-  int burnin = 0;
+  int burnin = 5;
   std::vector<seq_t> result;
   //int naccept = 0;
   seq_t cur(set);
@@ -434,8 +491,7 @@ Eigen::MatrixXd loglik_data(const Eigen::MatrixXd& theta, const std::vector<seq_
   Eigen::MatrixXd grad = Eigen::MatrixXd::Zero(n, n);
 #pragma omp parallel for reduction(+:grad)
   for (auto i=0; i < data.size(); i++) {
-    // TODO: Refactor this
-    if (data[i].size() < 8) {
+    if (data[i].size() < 6) {
       grad += loglik_set_full(theta, data[i]).second;
     } else {
       grad += loglik_set(theta, data[i], nperms);
@@ -446,10 +502,27 @@ Eigen::MatrixXd loglik_data(const Eigen::MatrixXd& theta, const std::vector<seq_
 }
 
 
-std::vector<seq_t> draw(const Eigen::MatrixXd& theta, int nsamples) {
+Eigen::MatrixXd loglik_data_uniform(const Eigen::MatrixXd& theta, const std::vector<seq_t>& data, int nperms) {
+  auto n = theta.rows();
+  Eigen::MatrixXd grad = Eigen::MatrixXd::Zero(n, n);
+#pragma omp parallel for reduction(+:grad)
+  for (auto i=0; i < data.size(); i++) {
+    if (data[i].size() < 6) {
+      grad += loglik_set_full(theta, data[i]).second;
+    } else {
+      grad += loglik_set_uniform(theta, data[i], nperms);
+    }
+  }
+  grad /= data.size();
+  return grad;
+}
+
+
+std::pair<std::vector<seq_t>, dseq_t> draw(const Eigen::MatrixXd& theta, int nsamples) {
   std::random_device rd;
   std::mt19937 gen(rd());
   std::vector<seq_t> res;
+  dseq_t times;
   auto n = theta.rows();
   for (auto cnt=0; cnt < nsamples; cnt++) {
     seq_t seq;
@@ -483,18 +556,20 @@ std::vector<seq_t> draw(const Eigen::MatrixXd& theta, int nsamples) {
       rest.erase(rest.begin()+idx);
     }
     res.push_back(seq);
+    times.push_back(tstop);
   }
-  return res;
+  return std::make_pair(res, times);
 }
 
 
 PYBIND11_MODULE(diff, m) {
   m.def("loglik_seq", &loglik_seq, py::return_value_policy::reference_internal);
-  m.def("loglik_set_old", &loglik_set_old, py::return_value_policy::reference_internal);
+  m.def("loglik_set_uniform", &loglik_set_uniform, py::return_value_policy::reference_internal);
   m.def("loglik_set", &loglik_set, py::return_value_policy::reference_internal);
   m.def("loglik_set_full_old", &loglik_set_full_old, py::return_value_policy::reference_internal);
   m.def("loglik_set_full", &loglik_set_full, py::return_value_policy::reference_internal);
   m.def("loglik_data", &loglik_data, py::return_value_policy::reference_internal);
   m.def("loglik_data_full", &loglik_data_full, py::return_value_policy::reference_internal);
+  m.def("loglik_data_uniform", &loglik_data_uniform, py::return_value_policy::reference_internal);
   m.def("draw", &draw, py::return_value_policy::reference_internal);
 }

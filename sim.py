@@ -116,7 +116,7 @@ def dist(th1, th2, ndep, nsamples):
     print(p2)
     import scipy.stats
     #return 0.5*np.sum(np.abs(np.array(p1)-np.array(p2)))
-    return scipy.stats.entropy(p2, p1)
+    return scipy.stats.entropy(p1, p2)
 
 
 if __name__ == '__main__':

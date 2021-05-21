@@ -150,24 +150,22 @@ dual loglik_seq_aux(const VectorXdual& th, const seq_t& seq, double time, int n)
     }
   }
 
-  /*
-  std::cout << "<<<<<<<<<<<<<" << std::endl;
-  std::cout << "qs1----" << std::endl;
-  std::cout << qs1 << std::endl;
-  std::cout << "----" << std::endl;
-
-  std::cout << "qs2----" << std::endl;
-  std::cout << qs2 << std::endl;
-  std::cout << "----" << std::endl;
-
-  std::cout << "lik----" << std::endl;
-  std::cout << lik << std::endl;
-  std::cout << "----" << std::endl;
-  */
-
-  lik += log(hypoexp(qs1, time) - hypoexp(qs2, time));
-
+  // NOTE: The 1e-8 is added to avoid numerical issues.
+  lik += log(hypoexp(qs1, time) - hypoexp(qs2, time) + 1e-8);
   return lik;
+}
+
+
+double loglik_only_seq(const Eigen::MatrixXd& theta, const seq_t& seq, double time) {
+  int n = theta.rows();
+  VectorXdual tdual(theta.rows()*theta.cols());
+  for(auto i=0; i < theta.rows(); i++) {
+    for(auto j=0; j < theta.cols(); j++) {
+      tdual(j + i*theta.cols()) = theta(i, j);
+    }
+  }
+  auto lik = loglik_seq_aux(tdual, seq, time, n);
+  return (double)lik;
 }
 
 
@@ -188,6 +186,7 @@ std::pair<double, Eigen::MatrixXd> loglik_seq(const Eigen::MatrixXd& theta, cons
       matgrad(i, j) = grad(j+n*i);
     }
   }
+
   return std::make_pair((double) fval, matgrad);
 }
 
@@ -202,7 +201,7 @@ std::pair<double, Eigen::MatrixXd> loglik_set_aux(const Eigen::MatrixXd& theta, 
     liks[i] = res.first;
     grads[i] = res.second;
   }
-  
+
   double lse = logsumexp(liks);
 
   Eigen::MatrixXd grad = Eigen::MatrixXd::Zero(n, n);
@@ -299,6 +298,8 @@ std::pair<double, Eigen::Vector4d> loglik(const std::vector<double>& x, const st
 
 PYBIND11_MODULE(tdiff, m) {
   m.def("loglik", &loglik);
+  m.def("loglik_only_seq", &loglik_only_seq);
+  m.def("loglik_seq", &loglik_seq);
   m.def("loglik_set", &loglik_set);
   m.def("loglik_data", &loglik_data);
 }

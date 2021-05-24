@@ -189,7 +189,7 @@ std::pair<seq_t, double> sample_one_old(const Eigen::MatrixXd& theta, const seq_
     for (auto i=0; i < probs.size(); i++) {
       probs[i] = exp(probs[i]);
     }
-    
+
     std::discrete_distribution<> dist(probs.cbegin(), probs.cend());
     auto idx = dist(gen);
     auto next = setrest[idx];
@@ -235,8 +235,10 @@ std::pair<seq_t, double> sample_one(const Eigen::MatrixXd& theta, const seq_t& s
         sumth[rr] += theta(i, j);
         rr++;
       }
-      double lse = logaddexp(0, logsumexp(sumth));
-      logprobs[r] -= lse;
+      if (sumth.size() > 0) {
+        double lse = logaddexp(0, logsumexp(sumth));
+        logprobs[r] -= lse;
+      }
       r++;
     }
 
@@ -245,7 +247,7 @@ std::pair<seq_t, double> sample_one(const Eigen::MatrixXd& theta, const seq_t& s
     for (auto i=0; i < probs.size(); i++) {
       probs[i] = exp(probs[i]);
     }
-    
+
     std::discrete_distribution<> dist(probs.cbegin(), probs.cend());
     auto idx = dist(gen);
     auto next = setrest[idx];

@@ -172,7 +172,7 @@ class NAGOptimizer(Optimizer):
             if it > 1000:
                 if self.check_term(it, xsol):
                     break
-            if it > 1500:
+            if it > 2000:
                 step *= self.PSTEP
             # Plot stuff
             self.plot(it, show, data, xsol)
@@ -321,20 +321,20 @@ def recover_one(args, size, it, rep, feval=None):
     #
     #lik = diff.loglik_data_full(theta, data)[0]
     #print('lik =', lik)
-    feval = lambda t1, t2, ndep: sim.dist(t1, t2, ndep, 100000)
+    feval = lambda t1, t2, ndep: sim.dist(t1, t2, ndep, 1000000)
     #
-    dif = feval(theta, tt, ndep)
+    dif = feval(tt, theta, ndep)
     print('Done |', size, '--', it, '-- rep', rep, ': dif =', dif)
     return data, ndep, truetheta, theta, dif
 
 
 def recover_multi(args):
-    sizes = [0, 5, 20]
+    sizes = [0, 5]
     #niters = 19
     nreps = 20
     iter = 0
     #feval = 0#lambda t1, t2, ndep: t1[0, 1] - t1[1, 0]
-    feval = lambda t1, t2, ndep: sim.dist(t1, t2, ndep, 100000)
+    feval = lambda t1, t2, ndep: sim.dist(t1, t2, ndep, 1000000)
 
     res = joblib.Parallel(n_jobs=20)(joblib.delayed(recover_one)(args, size, iter, rep, feval)
                                      for size in sizes
@@ -348,10 +348,51 @@ def recover_multi(args):
 
 
 def get_theta(nrest):
-    theta = np.array([
-        [0, 4],
-        [0, -4]
+    #theta = np.array([
+    #    [0, 4],
+    #    [0, -4]
+    #])
+
+    #theta = 4.0*np.array([
+    #    [0, -1, 1, 1],
+    #    [-1, 0, 1, 1],
+    #    [0, 0, -1, -1],
+    #    [0, 0, -1, -1]
+    #])
+
+    theta = 4.0*np.array([
+        [0, -0.5, 1, 1, 1],
+        [-0.5, 0, 1, 1, 1],
+        [0, 0, -1, -0.5, -0.5],
+        [0, 0, -0.5, -1, -0.5],
+        [0, 0, -0.5, -0.5, -1]
     ])
+
+    #theta = 4.0*np.array([
+    #    [0.5, -1, 1],
+    #    [-1, 0.5, 1],
+    #    [0, 0, -1],
+    #])
+
+    #
+    import itertools
+    import util
+    import scipy.special
+    seqs = []
+    for s in util.powerset(range(theta.shape[0])):
+        for p in itertools.permutations(s):
+            seqs.append(p)
+
+    logp1 = np.array([diff.loglik_seq(theta, seq)[0] for seq in seqs])
+    lse = scipy.special.logsumexp(logp1)
+    logp1 -= lse
+    p1 = np.exp(logp1)
+
+    for foo, bar in zip(seqs, p1):
+        if bar > 0.01:
+            print(foo, bar)
+    #
+
 
     #theta = 3.0*np.array([
     #    [0, 1, 0, 0],
@@ -381,7 +422,7 @@ def get_theta(nrest):
     #print(theta)
 
     ndep = theta.shape[0]
-    tind = np.random.uniform(-3, -1, nrest)
+    tind = np.random.uniform(-3, 0, nrest)
     trest = np.diag(tind)
     print(trest)
     theta = np.block([[theta, np.zeros((ndep, nrest))],
@@ -407,7 +448,7 @@ def get_data(i):
 def plot_max2(show):
     from cpp import tdiff
     nreps = 10
-    ndata = 500
+    ndata = 1000
     nrest = 200
     
     res = []
@@ -419,8 +460,13 @@ def plot_max2(show):
         os.mkdir('synth')
         save_data(nreps, ndata, nrest)
 
-    for i in range(nreps):
+    for i in [0]:
         data, times, truetheta, ndep = get_data(i)
+
+        m0 = len([d for d in data if 0 in d]) / ndata
+        print('m0 =', m0)
+        m2 = len([d for d in data if 2 in d]) / ndata
+        print('m2 =', m2)
 
         #data = data.subset(list(range(50)))
         #foo = [len(d) for d in data]
@@ -441,12 +487,12 @@ def plot_max2(show):
 
         print(f'Learning {i}')
         fgrad = lambda t, x: tdiff.loglik_data(t, x, times)[1]
-        theta = learn(data, fgrad=fgrad, show=show, niter=3000, step=1.0, reg=(0.2, 0.02),
-                      exact=True, nsamples=50, init_theta='diag', verbose=False)
+        theta = learn(data, fgrad=fgrad, show=show, niter=3000, step=1.0, reg=(1.0, 0.05),
+                      exact=True, nsamples=50, init_theta='diag', verbose=True)
         print('theta =')
         print(theta)
         res.append(theta)
-        dif = sim.dist(truetheta, theta, ndep, nsamples=10000)
+        dif = sim.dist(truetheta, theta, ndep, nsamples=100000)
         print('dif =', dif)
         difs.append(dif)
 

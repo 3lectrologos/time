@@ -1,6 +1,9 @@
 import numpy as np
 import scipy.special
+import scipy.stats
 import collections
+import itertools
+import util
 from cpp import diff
 
 
@@ -98,24 +101,35 @@ def marg_seq(ss, idxs):
 
 
 def dist(th1, th2, ndep, nsamples):
-    s1, _ = diff.draw(th1, nsamples)
+    #s1, _ = diff.draw(th1, nsamples)
     s2, _ = diff.draw(th2, nsamples)
-    s1 = marg_seq(s1, list(range(ndep)))
+    #s1 = marg_seq(s1, list(range(ndep)))
     s2 = marg_seq(s2, list(range(ndep)))
 
-    c1 = collections.Counter(s1)
+    seqs = []
+    for s in util.powerset(range(th1.shape[0])):
+        for p in itertools.permutations(s):
+            seqs.append(p)
+
+    logp1 = np.array([diff.loglik_seq(th1, seq)[0] for seq in seqs])
+    lse = scipy.special.logsumexp(logp1)
+    logp1 -= lse
+    p1 = np.exp(logp1)
+
+
+    #c1 = collections.Counter(s1)
     c2 = collections.Counter(s2)
-    tv = 0
-    ks, p1, p2 = [], [], []
-    for k in set(c1.keys()) | set(c2.keys()):
-        ks.append(k)
-        p1.append(c1[k]/nsamples)
-        p2.append(c2[k]/nsamples)
-    print(ks)
-    print(p1)
-    print(p2)
-    import scipy.stats
-    return scipy.stats.entropy(p1, p2)
+    #print('p1 =', p1)
+    #p1 = [(c1[s])/nsamples for s in seqs]
+    #print('p1 =', p1)
+    p2 = np.array([(c2[s])/nsamples for s in seqs])
+
+    for foo, bar in zip(seqs, p1):
+        if bar > 0.05:
+            print(foo, bar)
+    #return (1/np.sqrt(2))*np.linalg.norm(np.sqrt(p1) - np.sqrt(p2))
+    #return 0.5*np.sum(np.abs(p1 - p2))
+    return scipy.stats.entropy(p2, p1)# + 0.5*scipy.stats.entropy(p2, m)
 
 
 if __name__ == '__main__':

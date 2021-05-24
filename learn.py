@@ -311,8 +311,8 @@ def recover_one(args, size, it, rep, feval=None):
         ind = choices[:size]
         #ind  = list(range(ndep, ndep+size))
         data = data.subset(list(range(ndep)) + list(ind))
-    theta = learn(data, show=args.show, niter=3000, step=0.2, reg=(1.0, 0.08),
-                  exact=False, nsamples=10, init_theta='diag', verbose=True)
+    theta = learn(data, show=args.show, niter=3000, step=0.2, reg=(1.0, 0.05),
+                  exact=False, nsamples=50, init_theta='diag', verbose=True)
     #
     #with open('tmptheta.pcl', 'wb') as fout:
     #    pickle.dump((data, theta), fout)
@@ -422,7 +422,7 @@ def get_theta(nrest):
     #print(theta)
 
     ndep = theta.shape[0]
-    tind = np.random.uniform(-3, 0, nrest)
+    tind = np.random.uniform(-4, -2, nrest)
     trest = np.diag(tind)
     print(trest)
     theta = np.block([[theta, np.zeros((ndep, nrest))],
@@ -454,7 +454,7 @@ def plot_max2(show):
     res = []
     difs = []
 
-    if True:
+    if False:
         import os, shutil
         shutil.rmtree('synth', ignore_errors=True)
         os.mkdir('synth')

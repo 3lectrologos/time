@@ -219,11 +219,14 @@ std::pair<double, Eigen::MatrixXd> loglik_set(const Eigen::MatrixXd& theta, cons
 }
 
 
+#pragma omp declare reduction(+: Eigen::MatrixXd: omp_out=omp_out+omp_in) initializer(omp_priv = omp_orig)
+
+
 std::pair<double, Eigen::MatrixXd> loglik_data(const Eigen::MatrixXd& theta, const std::vector<seq_t>& data, const std::vector<double>& times) {
   auto n = theta.rows();
   double lik = 0;
   Eigen::MatrixXd grad = Eigen::MatrixXd::Zero(n, n);
-  //#pragma omp parallel for reduction(+:lik,grad)
+  #pragma omp parallel for reduction(+:lik,grad)
   for (auto i=0; i < data.size(); i++) {
     auto res = loglik_set(theta, data[i], times[i]);
     lik += res.first;
@@ -235,69 +238,7 @@ std::pair<double, Eigen::MatrixXd> loglik_data(const Eigen::MatrixXd& theta, con
 }
 
 
-#pragma omp declare reduction(+: Eigen::Vector4d: omp_out=omp_out+omp_in) initializer(omp_priv = omp_orig)
-
-
-std::pair<double, Eigen::Vector4d> loglik(const std::vector<double>& x, const std::vector<seq_t>& data, const std::vector<double>& times) {
-  double val = 0;
-  Eigen::Vector4d grad = Eigen::Vector4d::Zero(4);
-
-  dual t1 = x[0];
-  dual t2 = x[1];
-  dual t12 = x[2];
-  dual t21 = x[3];
-
-  //#pragma omp parallel for reduction(+:grad,val)
-  for (auto i=0; i < data.size(); i++) {
-    dual t = times[i];
-    if (data[i].size() == 0) {
-      auto v = p0(x[0], x[1], x[2], x[3], t);
-      val += (double) v;
-      Eigen::Vector4d g;
-      g << (double) derivative(p0, wrt(t1), at(t1, t2, t12, t21, times[i])),
-        (double) derivative(p0, wrt(t2), at(t1, t2, t12, t21, times[i])),
-        (double) derivative(p0, wrt(t12), at(t1, t2, t12, t21, times[i])),
-        (double) derivative(p0, wrt(t21), at(t1, t2, t12, t21, times[i]));
-      grad += g;
-    } else if (data[i].size() == 1 && data[i][0] == 0) {
-      auto v = p1(x[0], x[1], x[2], x[3], t);
-      val += (double) v;
-      Eigen::Vector4d g;
-      g << (double) derivative(p1, wrt(t1), at(t1, t2, t12, t21, times[i])),
-        (double) derivative(p1, wrt(t2), at(t1, t2, t12, t21, times[i])),
-        (double) derivative(p1, wrt(t12), at(t1, t2, t12, t21, times[i])),
-        (double) derivative(p1, wrt(t21), at(t1, t2, t12, t21, times[i]));
-      grad += g;
-    } else if (data[i].size() == 1 && data[i][0] == 1) {
-      auto v = p2(x[0], x[1], x[2], x[3], t);
-      val += (double) v;
-      Eigen::Vector4d g;
-      g << (double) derivative(p2, wrt(t1), at(t1, t2, t12, t21, times[i])),
-        (double) derivative(p2, wrt(t2), at(t1, t2, t12, t21, times[i])),
-        (double) derivative(p2, wrt(t12), at(t1, t2, t12, t21, times[i])),
-        (double) derivative(p2, wrt(t21), at(t1, t2, t12, t21, times[i]));
-      grad += g;
-    } else {
-      auto v = p12(x[0], x[1], x[2], x[3], t);
-      val += (double) v;
-      Eigen::Vector4d g;
-      g << (double) derivative(p12, wrt(t1), at(t1, t2, t12, t21, times[i])),
-        (double) derivative(p12, wrt(t2), at(t1, t2, t12, t21, times[i])),
-        (double) derivative(p12, wrt(t12), at(t1, t2, t12, t21, times[i])),
-        (double) derivative(p12, wrt(t21), at(t1, t2, t12, t21, times[i]));
-      grad += g;
-    }
-  }
-
-  grad /= -1.0*data.size();
-  val /= -1.0*data.size();
-  
-  return std::make_pair(val, grad);
-}
-
-
 PYBIND11_MODULE(tdiff, m) {
-  m.def("loglik", &loglik);
   m.def("loglik_only_seq", &loglik_only_seq);
   m.def("loglik_seq", &loglik_seq);
   m.def("loglik_set", &loglik_set);

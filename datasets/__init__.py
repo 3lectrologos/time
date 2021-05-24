@@ -28,7 +28,9 @@ combos = [
     (['CDKN2C(D)', 'FAF1(D)'], 'FAF1(D)'),
     (['EGFR(A)', 'POM121L12(A)', 'ZPBP(A)'], 'EGFR(A)'),
     (['SOX2-OT(A)', 'PIK3CA(A)'], 'PIK3CA(A),...'),
-    (['MYCN(A)', 'MYCNOS(A)'], 'MYCN(A),...')
+    (['MYCN(A)', 'MYCNOS(A)'], 'MYCN(A),...'),
+    (['FGFR3(A)', 'LETM1(A)', 'TACC3(A)'], 'FGFR3(A)'),
+    (['AKT3(A)', 'ZBTB18(A)', 'SDCCAG8(A)', 'ADSS(A)', 'LINC02774(A)', 'MIR-4677/3P(A)'], 'AKT3(A),...')
 ]
 
 coad_combos = [

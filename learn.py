@@ -166,7 +166,8 @@ class NAGOptimizer(Optimizer):
             xsol += step*g
             mom = self.GAMMA*mom + step*g
             # L1-projection
-            xsol = self.reg_Lp(xsol, lreg*step, preg)
+            xsol = self.reg_L1(xsol, lreg*step)
+            #xsol = self.reg_Lp(xsol, lreg*step, preg)
             #xsol = self.reg_L1L2(xsol, lreg*step)
             # Check termination
             if it > 1000:
@@ -235,17 +236,17 @@ def learn(data, **kwargs):
     verbose = kwargs.get('verbose', True)
 
     if fgrad is not None:
-        opt = NAGOptimizer(fgrad, verbose)
+        opt = AdaOptimizer(fgrad, verbose)
     elif exact:
-        opt = NAGOptimizer(lambda t, x: diff.loglik_data_full(t, x)[1], verbose)
+        opt = AdaOptimizer(lambda t, x: diff.loglik_data_full(t, x)[1], verbose)
     else:
-        opt = NAGOptimizer(lambda t, x: diff.loglik_data(t, x, nsamples), verbose)
+        opt = AdaOptimizer(lambda t, x: diff.loglik_data(t, x, nsamples), verbose)
 
     if init_theta is None:
         init_theta = np.random.uniform(-0.1, 0.1, (data.nitems, data.nitems))
     elif init_theta == 'diag':
         th = np.zeros((data.nitems, data.nitems))
-        init_theta = opt.run(data, niter=101, step=1, reg=(1, 0), xinit=th, only_diag=True, show=False)
+        init_theta = opt.run(data, niter=101, step=1, reg=0, xinit=th, only_diag=True, show=False)
         th = np.random.uniform(-0.5, 0.5, (data.nitems, data.nitems))
         np.fill_diagonal(th, 0)
         init_theta += th
@@ -311,8 +312,8 @@ def recover_one(args, size, it, rep, feval=None):
         ind = choices[:size]
         #ind  = list(range(ndep, ndep+size))
         data = data.subset(list(range(ndep)) + list(ind))
-    theta = learn(data, show=args.show, niter=3000, step=0.2, reg=(1.0, 0.05),
-                  exact=False, nsamples=50, init_theta='diag', verbose=True)
+    theta = learn(data, show=args.show, niter=3000, step=0.2, reg=0.005,
+                  exact=False, nsamples=20, init_theta='diag', verbose=True)
     #
     #with open('tmptheta.pcl', 'wb') as fout:
     #    pickle.dump((data, theta), fout)
@@ -360,12 +361,19 @@ def get_theta(nrest):
     #    [0, 0, -1, -1]
     #])
 
-    theta = 4.0*np.array([
-        [0, -0.5, 1, 1, 1],
-        [-0.5, 0, 1, 1, 1],
-        [0, 0, -1, -0.5, -0.5],
-        [0, 0, -0.5, -1, -0.5],
-        [0, 0, -0.5, -0.5, -1]
+    #theta = 4.0*np.array([
+    #    [0, -0.25, 1, 1, 1],
+    #    [-0.25, 0, 1, 1, 1],
+    #    [0, 0, -1, -1, -1],
+    #    [0, 0, -1, -1, -1],
+    #    [0, 0, -1, -1, -1]
+    #])
+
+    theta = np.array([
+        [1, -4, 4, 4],
+        [-4, 1, 4, 4],
+        [0, 0, -4.5, -2.3],
+        [0, 0, -2.3, -4.5],
     ])
 
     #theta = 4.0*np.array([
@@ -422,7 +430,7 @@ def get_theta(nrest):
     #print(theta)
 
     ndep = theta.shape[0]
-    tind = np.random.uniform(-4, -2, nrest)
+    tind = np.random.uniform(-3, -1, nrest)
     trest = np.diag(tind)
     print(trest)
     theta = np.block([[theta, np.zeros((ndep, nrest))],
@@ -430,10 +438,38 @@ def get_theta(nrest):
     return theta, ndep
 
 
+def custom():
+    lst = []
+    times = []
+    for nd in range(ndata):
+        cur = []
+        if np.random.uniform() < 0.3:
+            lst.append(cur)
+            times.append(np.random.uniform(0, 0.2))
+            continue
+        if np.random.uniform() < 0.5:
+            cur.append(0)
+        else:
+            cur.append(1)
+        if np.random.uniform() < 0.5:
+            lst.append(cur)
+            times.append(np.random.uniform(0.2, 0.5))
+            continue
+        if np.random.uniform() < 0.5:
+            cur.append(2)
+        else:
+            cur.append(3)
+        lst.append(cur)
+        times.append(np.random.uniform(0.5, 1))
+    return lst, times
+
+
 def save_data(nreps, ndata, nrest):
     theta, ndep = get_theta(nrest)
     for i in range(nreps):
         lst, times = diff.draw(theta, ndata)
+        for s in lst:
+            random.shuffle(s)
         with open(f'synth/data_{i}.pcl', 'wb') as fout:
             pickle.dump((lst, times, ndep, nrest, theta), fout)
 
@@ -447,7 +483,7 @@ def get_data(i):
 
 def plot_max2(show):
     from cpp import tdiff
-    nreps = 10
+    nreps = 1
     ndata = 1000
     nrest = 200
     
@@ -487,7 +523,7 @@ def plot_max2(show):
 
         print(f'Learning {i}')
         fgrad = lambda t, x: tdiff.loglik_data(t, x, times)[1]
-        theta = learn(data, fgrad=fgrad, show=show, niter=3000, step=1.0, reg=(1.0, 0.05),
+        theta = learn(data, fgrad=fgrad, show=show, niter=3000, step=1.0, reg=0.005,
                       exact=True, nsamples=50, init_theta='diag', verbose=True)
         print('theta =')
         print(theta)

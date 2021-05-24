@@ -98,8 +98,8 @@ def marg_seq(ss, idxs):
 
 
 def dist(th1, th2, ndep, nsamples):
-    s1 = diff.draw(th1, nsamples)
-    s2 = diff.draw(th2, nsamples)
+    s1, _ = diff.draw(th1, nsamples)
+    s2, _ = diff.draw(th2, nsamples)
     s1 = marg_seq(s1, list(range(ndep)))
     s2 = marg_seq(s2, list(range(ndep)))
 
@@ -115,7 +115,6 @@ def dist(th1, th2, ndep, nsamples):
     print(p1)
     print(p2)
     import scipy.stats
-    #return 0.5*np.sum(np.abs(np.array(p1)-np.array(p2)))
     return scipy.stats.entropy(p1, p2)
 
 

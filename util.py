@@ -109,8 +109,14 @@ def plot_matrix(m, ax=None, xlabels=None, ylabels=None, text=None,
         vmax = np.max(m)
     if vmid is None:
         vmid = 0.5 * (vmin + vmax)
-    mat = ax.matshow(m, cmap=plt.get_cmap(cmap), vmin=vmin, vmax=vmax,
-                     norm=MidpointNormalize(midpoint=vmid), aspect='auto')
+
+    import numpy.ma
+    maskdiag = np.diag(np.ones(m.shape[0]))
+    mdiag = numpy.ma.masked_where(maskdiag==0, m)
+    ax.matshow(mdiag, cmap='Greys', vmin=-6, vmax=0)
+    moff = numpy.ma.masked_where(maskdiag==1, m)
+    ax.matshow(moff, cmap=plt.get_cmap(cmap), vmin=vmin, vmax=vmax)
+
     ax.set_yticks(range(nrows))
     ax.set_yticklabels(xlabels, fontsize=axes_fontsize)
     ax.set_xticks(range(ncols))
@@ -124,7 +130,7 @@ def plot_matrix(m, ax=None, xlabels=None, ylabels=None, text=None,
             if text == 'rows':
                 ax.text(x, y, xlabels[y], va='center', ha='center',
                         fontsize=cell_fontsize, color='white')
-            else:
+            elif np.abs(w) > 1e-1:
                 ax.text(x, y, '{0:.1f}'.format(w),
                         va='center', ha='center', fontsize=cell_fontsize)
     if grid:

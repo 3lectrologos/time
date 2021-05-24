@@ -172,7 +172,7 @@ class NAGOptimizer(Optimizer):
             if it > 1000:
                 if self.check_term(it, xsol):
                     break
-            if it > 2000:
+            if it > 1500:
                 step *= self.PSTEP
             # Plot stuff
             self.plot(it, show, data, xsol)
@@ -300,28 +300,28 @@ Result = collections.namedtuple('Result', ['data', 'ndep', 'truetheta', 'theta',
 
 def recover_one(args, size, it, rep, feval=None):
     print('Running |', size, '--', it, '-- rep', rep)
-    #data, _, truetheta, ndep = get_data(it)
-    data = get_real(0)
-    truetheta = None
-    ndep = 2
-    if False:
+    data, _, truetheta, ndep = get_data(it)
+    #data = get_real(0)
+    #truetheta = None
+    #ndep = 2
+    if True:
         choices = list(range(ndep, data.nitems))
         random.seed(rep)
         random.shuffle(choices)
         ind = choices[:size]
         #ind  = list(range(ndep, ndep+size))
         data = data.subset(list(range(ndep)) + list(ind))
-    theta = learn(data, show=args.show, niter=3000, step=0.2, reg=(1.0, 0.05),
+    theta = learn(data, show=args.show, niter=3000, step=0.2, reg=(1.0, 0.08),
                   exact=False, nsamples=10, init_theta='diag', verbose=True)
     #
-    with open('tmptheta.pcl', 'wb') as fout:
-        pickle.dump((data, theta), fout)
+    #with open('tmptheta.pcl', 'wb') as fout:
+    #    pickle.dump((data, theta), fout)
     #
     tt = truetheta[np.ix_(list(range(ndep)), list(range(ndep)))]
     #
     #lik = diff.loglik_data_full(theta, data)[0]
     #print('lik =', lik)
-    feval = lambda t1, t2, ndep: sim.dist(t1, t2, ndep, 10000)
+    feval = lambda t1, t2, ndep: sim.dist(t1, t2, ndep, 100000)
     #
     dif = feval(theta, tt, ndep)
     print('Done |', size, '--', it, '-- rep', rep, ': dif =', dif)
@@ -329,12 +329,12 @@ def recover_one(args, size, it, rep, feval=None):
 
 
 def recover_multi(args):
-    sizes = [0, 2, 4, 6, 8]
+    sizes = [0, 5, 20]
     #niters = 19
     nreps = 20
     iter = 0
     #feval = 0#lambda t1, t2, ndep: t1[0, 1] - t1[1, 0]
-    feval = lambda t1, t2, ndep: sim.dist(t1, t2, ndep, 10000)
+    feval = lambda t1, t2, ndep: sim.dist(t1, t2, ndep, 100000)
 
     res = joblib.Parallel(n_jobs=20)(joblib.delayed(recover_one)(args, size, iter, rep, feval)
                                      for size in sizes
@@ -344,154 +344,6 @@ def recover_multi(args):
         pickle.dump((sizes, nreps, res), fout)
     import plot_difs
     plot_difs.plot('difs.pcl')
-    plt.show()
-
-
-def real_exp(size):
-    niter = 20
-    data = get_real(size)
-    res = joblib.Parallel(n_jobs=20)(joblib.delayed(learn)(data, show=False, niter=3000, step=0.2, reg=(1.0, 0.08),
-                                                           exact=False, nsamples=20, init_theta='diag', verbose=True)
-                                     for i in range(niter))
-    res = np.array(res)
-    with open(f'real_pan_{size}.pcl', 'wb') as fout:
-        pickle.dump((data, res), fout)
-
-
-def plot_real(size):
-    with open(f'real_pan_{size}.pcl', 'rb') as fin:
-        data, res = pickle.load(fin)
-    #
-    #for r in res:
-    #    print(f'{r[1, 4]:.2f} -- {r[4, 1]:.2f}')
-    #
-    #dif = np.amax(res, axis=0) - np.amin(res, axis=0)
-    dif = np.std(res, axis=0)
-    idxs = range(20)
-    dif = dif[np.ix_(idxs, idxs)]
-    labels = data.labels
-    util.plot_matrix(dif,
-                     xlabels=labels, ylabels=labels,
-                     vmin=-5, vmid=0, vmax=5, cmap='PuOr_r', notext=False,
-                     axes_fontsize=8)
-    plt.show()
-
-
-def get_real(size):
-    data = datasets.hazard()
-    #labels = ['TP53(M)', 'MDM2(A)', 'MDM4(A)', 'CDKN2A(D)', 'CDK4(A)',
-    #          'NF1(M)', 'IDH1(M)', 'PTEN(M)', 'PTEN(D)', 'EGFR(M)',
-    #          'RB1(D)', 'PDGFRA(A)', 'FAF1(D)', 'SPTA1(M)', 'PIK3CA(M)',
-    #          'OBSCN(M)', 'CNTNAP2(M)', 'PAOX(M)', 'TP53(D)', 'LRP2(M)']
-    #data = data.subset(data.idx(labels))
-
-    if True:
-        data = datasets.tcga('gbm', alt=False, mutonly=False)
-        #data = datasets.comet('gbm')
-        if True:
-            #cutoff = 0.03
-            #keep = []
-            #for idx in range(data.nitems):
-            #    if data.marginals[idx] > cutoff:
-            #        keep.append(idx)
-            #labels = []
-            #extra = data.idx(labels)
-            #keep = list(set(keep) - set(extra))
-            #
-            labels = ['TP53', 'MDM2(A)', 'MDM4(A)', 'CDKN2A(D)', 'CDK4(A)',
-                      'NF1', 'IDH1', 'PTEN', 'PTEN(D)', 'EGFR', 'EGFR(A)',
-                      'RB1(D)', 'PDGFRA', 'PDGFRA(A)', 'FAF1(D)', 'SPTA1', 'PIK3CA',
-                      'OBSCN', 'CNTNAP2', 'TP53(D)', 'LRP2']
-            extra = data.idx(labels)
-            
-            keep = list(set(range(data.nitems)) - set(extra))
-            margs = [data.marginals[idx] for idx in keep]
-            comb = zip(keep, margs)
-            comb = sorted(comb, key=lambda x: x[1], reverse=True)
-            keep, _ = zip(*comb)
-            keep = list(keep[:size])
-
-            keep = extra + keep
-            #
-        else:
-            labels = ['TP53', 'MDM2(A)', 'MDM4(A)', 'CDKN2A(D)', 'CDK4(A)',
-                      'NF1', 'IDH1', 'PTEN', 'PTEN(D)', 'EGFR', 'EGFR(A)',
-                      'RB1(D)', 'PDGFRA', 'PDGFRA(A)', 'FAF1(D)', 'SPTA1', 'PIK3CA',
-                      'OBSCN', 'CNTNAP2', 'TP53(D)', 'LRP2']
-            #labels += ['EGFR(A)']
-            #labels = ['TP53', 'IDH1']
-            keep = data.idx(labels)
-            # sort
-            margs = [data.marginals[idx] for idx in keep]
-            comb = zip(keep, margs)
-            comb = sorted(comb, key=lambda x: x[1], reverse=True)
-            keep, _ = zip(*comb)
-            keep = list(keep)
-            #
-        data = data.subset(keep)
-        print(data)
-    return data
-
-
-def run_main(args):
-    data = get_real()
-    print(f'Running on {data}')
-    theta = learn(data, show=args.show, niter=3000, step=0.5, reg=(0.2, 0.02),
-                  exact=False, nsamples=100, init_theta='diag', verbose=True)
-
-
-def run_multi():
-    nreps = 25
-    HAZARD = False
-    if HAZARD:
-        data = datasets.hazard()
-    else:
-        origlabels = ['TP53', 'MDM2(A)', 'MDM4(A)', 'CDKN2A/B(D)', 'CDK4(A)',
-                      'NF1', 'IDH1', 'PTEN', 'PTEN(D)', 'EGFR',
-                      'RB1(D)', 'PDGFRA(A)', 'SPTA1', 'PIK3CA',
-                      'OBSCN', 'CNTNAP2', 'PAOX', 'TP53(D)', 'LRP2',
-                      'EGFR(A)', 'RB1', 'ATRX']
-        data = datasets.tcga('gbmmed', alt=False, mutonly=False)
-        origidx = data.idx(origlabels)
-        cutoff = 0.03
-        keep = []
-        for idx in range(data.nitems):
-            if data.marginals[idx] > cutoff:
-                keep.append(idx)
-        #keep = list(set(keep) | set(origidx))
-        keep = origidx
-        #
-        #keep = data.idx(['EGFR', 'EGFR(A)'])
-        #
-        data = data.subset(keep)
-        print(data)
-        print(data.labels)
-    thetas = []
-    for rep in range(nreps):
-        print(f'rep {rep}')
-        theta = learn(data, niter=1500, reg=30)
-        #lik = diff.loglik_data_full(theta, data)
-        #print('log-lik =', lik[0])
-        thetas.append(theta)
-        #
-        plt.gcf().set_size_inches(11, 11)
-        plot_mat(theta, plt.gca(), labels=data.labels, full=True)
-        plt.savefig(f'res_{rep}.png', dpi=300)
-        plt.close()
-        #
-    thetas = np.asarray(thetas)
-    tmin = np.min(np.exp(thetas), axis=0)
-    tmax = np.max(np.exp(thetas), axis=0)
-    tdif = tmax-tmin
-    labels = data.labels
-
-    idxlab = list(zip(range(data.nitems), data.labels))
-    idxlab = sorted(idxlab, key=lambda x: x[1])
-    idxs, labs = zip(*idxlab)
-    util.plot_matrix(tdif, plt.gca(),
-                     xlabels=labels, ylabels=labels, permx=list(idxs), permy=list(idxs),
-                     vmin=0, vmax=1, cmap='Purples', notext=False,
-                     axes_fontsize=8)
     plt.show()
 
 
@@ -529,7 +381,7 @@ def get_theta(nrest):
     #print(theta)
 
     ndep = theta.shape[0]
-    tind = np.random.uniform(-3, 0, nrest)
+    tind = np.random.uniform(-3, -1, nrest)
     trest = np.diag(tind)
     print(trest)
     theta = np.block([[theta, np.zeros((ndep, nrest))],
@@ -553,8 +405,9 @@ def get_data(i):
 
 
 def plot_max2(show):
-    nreps = 1
-    ndata = 1000
+    from cpp import tdiff
+    nreps = 10
+    ndata = 500
     nrest = 200
     
     res = []
@@ -566,7 +419,7 @@ def plot_max2(show):
         os.mkdir('synth')
         save_data(nreps, ndata, nrest)
 
-    for i in [0]:
+    for i in range(nreps):
         data, times, truetheta, ndep = get_data(i)
 
         #data = data.subset(list(range(50)))
@@ -642,6 +495,7 @@ if __name__ == '__main__':
     parser.add_argument('--main', action='store_true')
     parser.add_argument('--real', nargs=1)
     parser.add_argument('--plotreal', nargs=1)
+    parser.add_argument('--plotrat', action='store_true')
     args = parser.parse_args()
     if args.rec:
         recover_one(args, int(args.rec[0]), int(args.rec[1]), rep=int(args.rec[2]))
@@ -657,3 +511,5 @@ if __name__ == '__main__':
         real_exp(int(args.real[0]))
     elif args.plotreal:
         plot_real(int(args.plotreal[0]))
+    elif args.plotrat:
+        plot_ratios()

@@ -11,7 +11,7 @@ import util
 from cpp import diff
 
 
-RES_DIR = 'res_hazard'
+RES_DIR = 'res_tcga'
 
 
 def desc(genes):
@@ -19,8 +19,8 @@ def desc(genes):
 
 
 def get_data(fixed=None, extra=0):
-    #data = datasets.tcga('gbm', alt=False, mutonly=False)
-    data = datasets.comet('gbm')
+    data = datasets.tcga('gbm', alt=False, mutonly=False)
+    #data = datasets.comet('gbm')
 
     #cutoff = 0.03
     #keep = []
@@ -55,7 +55,7 @@ def run_hazard():
     niter = 1
     #data = datasets.hazard()
     data = get_data(extra=50)
-    res = learn.learn(data, show=False, niter=100, step=1.0, reg=0.01,
+    res = learn.learn(data, show=False, niter=3000, step=1.0, reg=0.008,
                       exact=False, nsamples=50, init_theta='diag', verbose=True)
     #res = joblib.Parallel(n_jobs=niter)(joblib.delayed(learn.learn)(data, show=False, niter=3000, step=0.2, reg=(1.0, 0.1),
     #                                                             exact=False, nsamples=10, init_theta='diag', verbose=True)
@@ -134,13 +134,13 @@ def run_exp(genes, size, niter):
 
 def run_all(genes):
     sizes = [0, 5, 10, 20, 30]
-    niter = 20
+    niter = 10
     for size in sizes:
         run_exp(genes, size, niter)
 
 
 def get_dir(th, idxs):
-    nsamples = 1000
+    nsamples = 10000
     s, _ = diff.draw(th, nsamples)
     s = sim.marg_seq(s, idxs)
     c = collections.Counter(s)
@@ -150,39 +150,38 @@ def get_dir(th, idxs):
     return c01/z, c10/z
 
 
-def plot_real(size):
-    with open(f'{RES_DIR}/pan_{size}.pcl', 'rb') as fin:
+def plot_real(genes, size):
+    with open(f'{RES_DIR}_010/{desc(genes)}_{size}.pcl', 'rb') as fin:
         data, res = pickle.load(fin)
-    #
-    for r in res:
-        i1, i2 = 12, 13
-        #i1, i2 = 0, 6
-        #i1, i2 = 1, 4
-        #i1, i2 = 0, 1
-        #lik, _ = diff.loglik_data_full(r, data)
-        lik = 0
-        ab, ba = get_dir(r, [i1, i2])
-        print(f'{r[i1, i2]:.2f} -- {r[i2, i1]:.2f} -- {ab}, {ba}')
-    #
-    #dif = np.amax(res, axis=0) - np.amin(res, axis=0)
     dif = np.std(res, axis=0)
-    idxs = range(20)
+    idxs = range(min(50, dif.shape[0]))
     dif = dif[np.ix_(idxs, idxs)]
     labels = data.labels
-    util.plot_matrix(res[0],
+    util.plot_matrix(dif,
                      xlabels=labels, ylabels=labels,
-                     vmin=-5, vmid=0, vmax=5, cmap='PuOr_r', notext=False,
+                     vmin=0, vmax=5, cmap='Greys', notext=False,
                      axes_fontsize=8)
     plt.show()
 
 
 def plot_ratios(genes):
-    sizes = [0, 5, 10, 20, 30]
-    big_sizes = [35, 50]
+    sizes = []
     mab, mba = [], []
     sab, sba = [], []
-    for size in sizes:
-        with open(f'{RES_DIR}_010/{desc(genes)}_{size}.pcl', 'rb') as fin:
+    import os
+    dirname = f'{RES_DIR}_010'
+    allfiles = os.listdir(dirname)
+    for fname in allfiles:
+        print(fname)
+        if fname.startswith(f'{desc(genes)}_'):
+            size = int(fname[len(f'{desc(genes)}_'):-4])
+            sizes.append(size)
+        elif fname.startswith(f'_'):
+            size = int(fname[1:-4])
+            sizes.append(size)
+        else:
+            continue
+        with open(f'{dirname}/{fname}', 'rb') as fin:
             data, res = pickle.load(fin)
         idxs = data.idx(genes)
         dirs = [get_dir(r, idxs) for r in res]
@@ -191,17 +190,12 @@ def plot_ratios(genes):
         sab.append(2*np.std(ab) / np.sqrt(len(ab)))
         mba.append(np.mean(ba))
         sba.append(2*np.std(ba) / np.sqrt(len(ba)))
-    for size in big_sizes:
-        with open(f'{RES_DIR}_010/_{size}.pcl', 'rb') as fin:
-            data, res = pickle.load(fin)
-        idxs = data.idx(genes)
-        dirs = [get_dir(r, idxs) for r in res]
-        ab, ba = zip(*dirs)
-        mab.append(np.mean(ab))
-        sab.append(2*np.std(ab) / np.sqrt(len(ab)))
-        mba.append(np.mean(ba))
-        sba.append(2*np.std(ba) / np.sqrt(len(ba)))
-    sizes = sizes + big_sizes
+    idxs = range(len(sizes))
+    comb = sorted(list(zip(idxs, sizes)), key=lambda x: x[1])
+    idxs, sizes = zip(*comb)
+    idxs = list(idxs)
+    mab = np.array(mab)[idxs]
+    sab = np.array(sab)[idxs]
     res = np.array([sizes, mab, sab]).T
     #np.savetxt(f'/mnt/c/Users/el3ct/Desktop/timepaper/figures/{desc(genes)}.dat', res)
     plt.errorbar(sizes, mab, yerr=sab, fmt='o-', capsize=3, linewidth=2)
@@ -220,20 +214,22 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--run', action='store_true')
     parser.add_argument('--plot', action='store_true')
+    parser.add_argument('--dif', action='store_true')
     args = parser.parse_args()
 
     #genes = ['EGFR(A)', 'EGFR']
-    genes = ['TP53', 'IDH1']
-    #genes = ['MDM2(A)', 'CDK4(A)']
+    #genes = ['TP53', 'IDH1']
+    genes = ['MDM2(A)', 'CDK4(A)']
     #genes = ['PDGFRA(A)', 'PDGFRA']
 
     if args.run:
-        run_hazard()
-        #run_all(genes)
+        #run_hazard()
+        run_all(genes)
         #run_all([])
     if args.plot:
         plot_ratios(genes)
-        #plot_real(0)
+    elif args.dif:
+        plot_real(genes, size=10)
         #plot_big()
 
     #run_hazard()

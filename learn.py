@@ -247,7 +247,7 @@ def learn(data, **kwargs):
     elif init_theta == 'diag':
         th = np.zeros((data.nitems, data.nitems))
         init_theta = opt.run(data, niter=101, step=1, reg=0, xinit=th, only_diag=True, show=False)
-        th = np.random.uniform(-0.5, 0.5, (data.nitems, data.nitems))
+        th = np.random.uniform(-0.2, 0.2, (data.nitems, data.nitems))
         np.fill_diagonal(th, 0)
         init_theta += th
     theta = opt.run(data, niter=niter, step=step, reg=reg, xinit=init_theta, show=show)
@@ -312,8 +312,8 @@ def recover_one(args, size, it, rep, feval=None):
         ind = choices[:size]
         #ind  = list(range(ndep, ndep+size))
         data = data.subset(list(range(ndep)) + list(ind))
-    theta = learn(data, show=args.show, niter=3000, step=0.2, reg=0.005,
-                  exact=False, nsamples=20, init_theta='diag', verbose=True)
+    theta = learn(data, show=args.show, niter=3000, step=1.0, reg=0.01,
+                  exact=False, nsamples=100, init_theta='diag', verbose=True)
     #
     #with open('tmptheta.pcl', 'wb') as fout:
     #    pickle.dump((data, theta), fout)
@@ -330,7 +330,7 @@ def recover_one(args, size, it, rep, feval=None):
 
 
 def recover_multi(args):
-    sizes = [0, 5]
+    sizes = [0, 10, 20]#, 10, 15]
     #niters = 19
     nreps = 20
     iter = 0
@@ -349,37 +349,25 @@ def recover_multi(args):
 
 
 def get_theta(nrest):
-    #theta = np.array([
-    #    [0, 4],
-    #    [0, -4]
-    #])
-
-    #theta = 4.0*np.array([
-    #    [0, -1, 1, 1],
-    #    [-1, 0, 1, 1],
-    #    [0, 0, -1, -1],
-    #    [0, 0, -1, -1]
-    #])
-
-    #theta = 4.0*np.array([
-    #    [0, -0.25, 1, 1, 1],
-    #    [-0.25, 0, 1, 1, 1],
-    #    [0, 0, -1, -1, -1],
-    #    [0, 0, -1, -1, -1],
-    #    [0, 0, -1, -1, -1]
-    #])
-
     theta = np.array([
-        [1, -4, 4, 4],
-        [-4, 1, 4, 4],
-        [0, 0, -4.5, -2.3],
-        [0, 0, -2.3, -4.5],
+        [0, 4],
+        [0, -4]
     ])
 
-    #theta = 4.0*np.array([
-    #    [0.5, -1, 1],
-    #    [-1, 0.5, 1],
-    #    [0, 0, -1],
+    #theta = np.array([
+    #    [-1, 4, 0, 0, 0],
+    #    [0, -1, -2, 0, 0],
+    #    [0, -2, -0.5, 4, 0],
+    #    [0, 0, 0, -4, 4],
+    #    [0, 0, 0, 0, -4]
+    #])
+
+    #theta = np.array([
+    #    [-1, 4, 0, 0, 0],
+    #    [0, -1, -2, -2, 0],
+    #    [0, -2, -1, -2, 0],
+    #    [0, -2, -2, -0.5, 4],
+    #    [0, 0, 0, 0, -4]
     #])
 
     #
@@ -430,7 +418,7 @@ def get_theta(nrest):
     #print(theta)
 
     ndep = theta.shape[0]
-    tind = np.random.uniform(-3, -1, nrest)
+    tind = np.random.uniform(-4, -2, nrest)
     trest = np.diag(tind)
     print(trest)
     theta = np.block([[theta, np.zeros((ndep, nrest))],
@@ -484,7 +472,7 @@ def get_data(i):
 def plot_max2(show):
     from cpp import tdiff
     nreps = 1
-    ndata = 1000
+    ndata = 500
     nrest = 200
     
     res = []
@@ -499,10 +487,9 @@ def plot_max2(show):
     for i in [0]:
         data, times, truetheta, ndep = get_data(i)
 
-        m0 = len([d for d in data if 0 in d]) / ndata
-        print('m0 =', m0)
-        m2 = len([d for d in data if 2 in d]) / ndata
-        print('m2 =', m2)
+        for foo in range(ndep):
+            mfoo = len([d for d in data if foo in d]) / ndata
+            print(f'th = {truetheta[foo, foo]} | m({foo}) =', mfoo)
 
         #data = data.subset(list(range(50)))
         #foo = [len(d) for d in data]
@@ -523,7 +510,7 @@ def plot_max2(show):
 
         print(f'Learning {i}')
         fgrad = lambda t, x: tdiff.loglik_data(t, x, times)[1]
-        theta = learn(data, fgrad=fgrad, show=show, niter=3000, step=1.0, reg=0.005,
+        theta = learn(data, fgrad=fgrad, show=show, niter=3000, step=1.0, reg=0.01,
                       exact=True, nsamples=50, init_theta='diag', verbose=True)
         print('theta =')
         print(theta)

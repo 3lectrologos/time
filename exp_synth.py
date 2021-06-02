@@ -106,7 +106,7 @@ def recover(ftheta, nreps):
     omp_threads = os.environ['OMP_NUM_THREADS']
     os.environ['OMP_NUM_THREADS'] = '1'
     try:
-        sizes = [0, 5]#, 10, 15, 20]
+        sizes = [0, 5, 10, 15, 20, 25, 30, 35, 40]
         feval = lambda t1, t2, ndep: util.KLdist(t1, t2, ndep, nsamples=1000000)
         njobs = multiprocessing.cpu_count()
         res = joblib.Parallel(n_jobs=njobs)(joblib.delayed(recover_one)(ftheta, size, rep, feval)

@@ -2,13 +2,14 @@ import sys
 import numpy as np
 import random
 import itertools
-import functools
-import csv
 import matplotlib.pylab as plt
 import matplotlib.colors as pltcolors
 import matplotlib.cm as pltcm
-import scipy
-from collections import defaultdict
+import scipy.special
+import scipy.stats
+import collections
+
+from cpp import diff
 
 
 class MidpointNormalize(pltcolors.Normalize):
@@ -49,23 +50,6 @@ def vec2mat(vec, n):
     mat[lidx] = lower
     mat[didx] = diag
     return mat
-
-
-def permute_rows(mat, seed=None, fixed=None):
-    if seed is not None:
-        np.random.seed(seed)
-        random.seed(seed)
-    if fixed is None:
-        fixed = []
-    assert set(fixed) <= set(range(mat.shape[0]))
-    rest = list(set(range(mat.shape[0]))-set(fixed))
-    #ncols = mat.shape[1]
-    for row in rest:
-        np.random.shuffle(mat[row, :])
-        #mat[row, :] = mat[row, np.random.permutation(ncols)]
-    if seed is not None:
-        np.random.seed()
-        random.seed()
 
 
 def permx_matrix(m, perm):
@@ -177,108 +161,6 @@ def plot_distribution(ps, labels, legend=None):
     plt.show()
 
 
-def perm_cmp(a, b, group):
-    if a == b:
-        return 0
-    ova = [g for g in group if g in a]
-    ovb = [g for g in group if g in b]
-    if len(ova) == 0:
-        return -1
-    elif len(ovb) == 0:
-        return 1
-    pa = ova[0]
-    pb = ovb[0]
-    ia = group.index(pa)
-    ib = group.index(pb)
-    if ia < ib:
-        return -1
-    elif ia > ib:
-        return 1
-    else:
-        return perm_cmp(list(set(a) - set([pa])),
-                        list(set(b) - set([pb])),
-                        group[::-1])
-
-
-def set_axes_size(w, h, ax=None):
-    if ax is None:
-        ax = plt.gca()
-    l = ax.figure.subplotpars.left
-    r = ax.figure.subplotpars.right
-    t = ax.figure.subplotpars.top
-    b = ax.figure.subplotpars.bottom
-    figw = w/(r-l)
-    figh = h/(t-b)
-    ax.figure.set_size_inches(figw, figh)
-
-
-def perm_group(data, group, niter=10000, perm=True, mode='rep'):
-    bs = defaultdict(lambda: [])
-    for d in data:
-        for g in group:
-            if g in d:
-                bs[g].append(d)
-    fs = [(g, len(bs[g])) for g in group]
-    if perm:
-        fs = sorted(fs, key=lambda s: s[1], reverse=True)
-    sgroup = next(zip(*fs))
-    g2i = dict(zip(sgroup, range(len(sgroup))))
-    mat = np.zeros((len(group), len(data)))
-    datacopy = [list(set(group) & set(d))
-                for d in data if len(set(group) & set(d)) != 0]
-    datacopy = sorted(datacopy,
-                      key=functools.cmp_to_key(
-                          lambda a, b: perm_cmp(a, b, sgroup)))
-    for i, d in enumerate(datacopy):
-        if len(d) > 1:
-            val = -1
-        else:
-            val = 1
-        for x in d:
-            mat[g2i[x], i] = val
-    cov = (100.0 * len(datacopy)) / len(data)
-    tab = data.matrix
-    return mat, sgroup, cov
-
-
-def ptest_string(pval):
-    if pval < 0.001:
-        return '{0:.2e}'.format(pval)
-    else:
-        return '{:.4f}'.format(pval)
-
-
-def do_plot_perm_group(ax, data, group, title=None, showtitle=True, niter=10,
-                       perm=True, mode='rep', axes_fontsize=8, title_fontsize=10,
-                       **kwargs):
-    mat, sgroup, cov = perm_group(data, group, niter, perm, mode)
-    xlabels = [data.labels[g] for g in sgroup]
-    ylabels = [''] * len(data)
-
-    plot_matrix(mat, ax, vmin=-2.5, vmax=1.3, vmid=0,
-                xlabels=xlabels, ylabels=ylabels,
-                cmap='PuOr', notext=True, grid=False,
-                axes_fontsize=axes_fontsize)
-    plt.xticks([0, mat.shape[1]], labels=['0', str(mat.shape[1])], rotation=0, ha='center')
-    ax.tick_params(axis='y', which='major', pad=8)
-
-
-def plot_perm_group(data, group, dlen=None, **kwargs):
-    fig, axes = plt.subplots(data.ntypes, 1)
-    plt.rc('hatch', linewidth=4.5)
-    if dlen is not None:
-        plt.axvspan(len(data), dlen,
-                    hatch='\\\\', facecolor='#999999', edgecolor='#eeeeee', linewidth=0)
-        axes.set_xlim((0, dlen))
-    height = 0.35*min(len(group), 15)
-    ctop = 0.6
-    bot = 0.01
-    top = (height)/(ctop + height)
-    plt.subplots_adjust(top=top, bottom=bot, left=0.13, right=0.98)
-    set_axes_size(10, height)
-    do_plot_perm_group(axes, data, group, **kwargs)
-
-
 def get_colormap(n, name='jet'):
     cm = plt.get_cmap(name)
     cnorm = pltcolors.Normalize(vmin=0, vmax=n-1)
@@ -313,3 +195,44 @@ def conditional_decorator(dec, flag):
     def decorate(fun):
         return dec(fun) if flag else fun
     return decorate
+
+
+def marg_seq(ss, idxs):
+    ssnew = []
+    for s in ss:
+        snew = [x for x in s if x in idxs]
+        ssnew.append(tuple(snew))
+    return ssnew
+
+
+def KLdist(th1, th2, ndep, nsamples):
+    s2, _ = diff.draw(th2, nsamples)
+    s2 = marg_seq(s2, list(range(ndep)))
+    seqs = []
+    for s in powerset(range(th1.shape[0])):
+        for p in itertools.permutations(s):
+            seqs.append(p)
+
+    c2 = collections.Counter(s2)
+    p2 = np.array([(c2[s])/nsamples for s in seqs])
+
+    logp1 = np.array([diff.loglik_seq(th1, seq)[0] for seq in seqs])
+    lse = scipy.special.logsumexp(logp1)
+    logp1 -= lse
+    p1 = np.exp(logp1)
+
+    return scipy.stats.entropy(p2, p1)
+
+
+def order_data(data, fixed=None, extra=0):
+    if fixed is None:
+        fixed = []
+    fixedidx = data.idx(fixed)
+    rest = list(set(range(data.nitems)) - set(fixedidx))
+    margs = [data.marginals[idx] for idx in rest]
+    comb = zip(rest, margs)
+    comb = sorted(comb, key=lambda x: x[1], reverse=True)
+    rest, _ = zip(*comb)
+    keep = fixedidx + list(rest[:extra])
+    data = data.subset(keep)
+    return data

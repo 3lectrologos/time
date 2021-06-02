@@ -18,39 +18,6 @@ def desc(genes):
     return '_'.join(genes)
 
 
-def get_data(fixed=None, extra=0):
-    data = datasets.tcga('gbm', alt=False, mutonly=False)
-    #data = datasets.comet('gbm')
-
-    #cutoff = 0.03
-    #keep = []
-    #for idx in range(data.nitems):
-    #    if data.marginals[idx] > cutoff:
-    #        keep.append(idx)
-    #labels = []
-    #extra = data.idx(labels)
-    #keep = list(set(keep) - set(extra))
-    #
-    #labels = ['TP53', 'MDM2(A)', 'MDM4(A)', 'CDKN2A(D)', 'CDK4(A)',
-    #          'NF1', 'IDH1', 'PTEN', 'PTEN(D)', 'EGFR', 'EGFR(A)',
-    #          'RB1(D)', 'PDGFRA', 'PDGFRA(A)', 'FAF1(D)', 'SPTA1', 'PIK3CA',
-    #          'OBSCN', 'CNTNAP2', 'TP53(D)', 'LRP2']
-    #labels = ['EGFR(A)', 'EGFR']
-    #labels = ['TP53', 'IDH1']
-    if fixed is None:
-        fixed = []
-    fixedidx = data.idx(fixed)
-    rest = list(set(range(data.nitems)) - set(fixedidx))
-    margs = [data.marginals[idx] for idx in rest]
-    comb = zip(rest, margs)
-    comb = sorted(comb, key=lambda x: x[1], reverse=True)
-    rest, _ = zip(*comb)
-    keep = fixedidx + list(rest[:extra])
-    data = data.subset(keep)
-    print(data)
-    return data
-
-
 def run_hazard():
     niter = 10
     #data = datasets.hazard()

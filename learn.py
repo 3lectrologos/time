@@ -98,7 +98,7 @@ class AdaOptimizer(Optimizer):
 def learn(data, **kwargs):
     fgrad = kwargs.get('fgrad', None)
     maxiter = kwargs.get('maxiter', 3000)
-    step = kwargs.get('step')
+    step = kwargs.get('step', 1.0)
     reg = kwargs.get('reg')
     exact = kwargs.get('exact', False)
     nsamples = kwargs.get('nsamples')
@@ -128,7 +128,7 @@ def learn(data, **kwargs):
 
 if __name__ == '__main__':
     import datasets
-    data = datasets.tcga('gbm', alt=False, mutonly=False)
+    data = datasets.tcga('gbm')
     data = util.order_data(data, extra=50)
     print(data)
     theta = learn(data, show=True, step=1.0, reg=0.01, nsamples=50)

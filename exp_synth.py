@@ -16,7 +16,8 @@ import learn
 import util
 
 
-DIR_NAME = 'datasets/synth'
+DATA_DIR = 'datasets/synth'
+OUT_DIR = 'result_synth'
 
 
 def synth2():
@@ -49,19 +50,19 @@ def get_theta(ftheta, nrest, uni_lo, uni_hi):
 
 
 def draw_data(ftheta, ndata=500, nrest=100, nreps=1):
-    if not os.path.exists(DIR_NAME):
-        os.mkdir(DIR_NAME)
+    if not os.path.exists(DATA_DIR):
+        os.mkdir(DATA_DIR)
     theta, ndep = get_theta(nrest)
     for i in range(nreps):
         lst, times = diff.draw(theta, ndata)
         for s in lst:
             random.shuffle(s)
-        with open(f'{DIR_NAME}/{ftheta.__name__}_{i}.pcl', 'wb') as fout:
+        with open(f'{DATA_DIR}/{ftheta.__name__}_{i}.pcl', 'wb') as fout:
             pickle.dump((lst, times, ndep, nrest, theta), fout)
 
 
 def get_data(ftheta, i=0):
-    with open(f'{DIR_NAME}/{ftheta.__name__}_{i}.pcl', 'rb') as fin:
+    with open(f'{DATA_DIR}/{ftheta.__name__}_{i}.pcl', 'rb') as fin:
         lst, times, ndep, nrest, true = pickle.load(fin)
     data = datasets.Data.from_list([lst], nitems=ndep+nrest)
     return data, times, true, ndep
@@ -112,7 +113,9 @@ def recover(ftheta, nreps):
                                             for size in sizes
                                             for rep in range(nreps))
         res = [Result(*r) for r in res]
-        with open(f'result_{ftheta.__name__}.pcl', 'wb') as fout:
+        if not os.path.exists(OUT_DIR):
+            os.mkdir(OUT_DIR)
+        with open(f'{OUT_DIR}/result_{ftheta.__name__}.pcl', 'wb') as fout:
             pickle.dump((sizes, nreps, res), fout)
     finally:
         os.environ['OMP_NUM_THREADS'] = omp_threads
@@ -120,7 +123,7 @@ def recover(ftheta, nreps):
 
 def plot(ftheta):
     timedif = learn_time(ftheta)
-    with open(f'result_{ftheta.__name__}.pcl', 'rb') as fin:
+    with open(f'{OUT_DIR}/result_{ftheta.__name__}.pcl', 'rb') as fin:
         sizes, nreps, res = pickle.load(fin)
     difs = [r.dif for r in res]
     difs = np.array(difs).reshape(len(sizes), nreps)

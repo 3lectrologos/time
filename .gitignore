@@ -2,6 +2,7 @@
 __pycache__/
 /cpp/eigen
 /cpp/pybind11
+/cpp/autodiff
 /*/CMakeCache.txt
 /*/CMakeFiles/
 /*/Makefile

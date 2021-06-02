@@ -57,7 +57,8 @@ class Optimizer:
         self.thetas = [np.zeros_like(xinit) for i in range(self.BUF_SIZE)]
 
     def check_term(self, it, xsol):
-        maxdif = np.abs(xsol - self.thetas[it % self.BUF_SIZE]).max()
+        dif = xsol - self.thetas[it % self.BUF_SIZE]
+        maxdif = np.abs(dif).max()
         self.thetas[it % self.BUF_SIZE] = xsol.copy()
         #print(maxdif)
         if maxdif < self.MIN_DIF:

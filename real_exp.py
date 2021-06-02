@@ -52,10 +52,10 @@ def get_data(fixed=None, extra=0):
 
 
 def run_hazard():
-    niter = 1
+    niter = 10
     #data = datasets.hazard()
-    data = get_data(extra=50)
-    res = learn.learn(data, show=False, niter=3000, step=1.0, reg=0.008,
+    data = get_data(extra=100)
+    res = learn.learn(data, show=False, niter=3000, step=1.0, reg=0.01,
                       exact=False, nsamples=50, init_theta='diag', verbose=True)
     #res = joblib.Parallel(n_jobs=niter)(joblib.delayed(learn.learn)(data, show=False, niter=3000, step=0.2, reg=(1.0, 0.1),
     #                                                             exact=False, nsamples=10, init_theta='diag', verbose=True)
@@ -99,10 +99,10 @@ def plot_hazard():
 
 def plot_big():
     plt.rcParams['axes.linewidth'] = 0.2
-    with open(f'{RES_DIR}/_100.pcl', 'rb') as fin:
+    with open(f'{RES_DIR}_010/_150.pcl', 'rb') as fin:
         data, res = pickle.load(fin)
 
-    nmax = 100
+    nmax = 150
     idxs = range(nmax)
 
     margs = [data.marginals[idx] for idx in idxs]
@@ -134,7 +134,7 @@ def run_exp(genes, size, niter):
 
 def run_all(genes):
     sizes = [0, 5, 10, 20, 30]
-    niter = 10
+    niter = 20
     for size in sizes:
         run_exp(genes, size, niter)
 
@@ -197,7 +197,7 @@ def plot_ratios(genes):
     mab = np.array(mab)[idxs]
     sab = np.array(sab)[idxs]
     res = np.array([sizes, mab, sab]).T
-    #np.savetxt(f'/mnt/c/Users/el3ct/Desktop/timepaper/figures/{desc(genes)}.dat', res)
+    np.savetxt(f'/mnt/c/Users/el3ct/Desktop/timepaper/figures/{desc(genes)}.dat', res)
     plt.errorbar(sizes, mab, yerr=sab, fmt='o-', capsize=3, linewidth=2)
     #plt.errorbar(sizes, mba, yerr=sba, fmt='o-', capsize=3, linewidth=2)
     plt.ylim((0, 1))
@@ -219,18 +219,17 @@ if __name__ == '__main__':
 
     #genes = ['EGFR(A)', 'EGFR']
     #genes = ['TP53', 'IDH1']
-    genes = ['MDM2(A)', 'CDK4(A)']
-    #genes = ['PDGFRA(A)', 'PDGFRA']
+    #genes = ['MDM2(A)', 'CDK4(A)']
+    genes = ['PDGFRA(A)', 'PDGFRA']
 
     if args.run:
-        #run_hazard()
-        run_all(genes)
+        run_hazard()
+        #run_all(genes)
         #run_all([])
     if args.plot:
         plot_ratios(genes)
     elif args.dif:
-        plot_real(genes, size=10)
-        #plot_big()
+        #plot_real(genes, size=10)
+        plot_big()
 
-    #run_hazard()
     #plot_hazard()

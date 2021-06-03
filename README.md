@@ -10,5 +10,5 @@ Running `setup.sh` downloads the required third-party C++ libraries (`pybind11`,
 Run
 ---
 * `python learn.py` to learn a model on the top 50 genes of the TCGA GBM data
-* `run_synthetic.sh` to run the synthetic experiments of the paper
-* `run_real.sh` to run the real data experiments of the paper
+* `run_synthetic.sh [NUM_REPETITIONS]` to run the synthetic experiments. (In the paper we ran `run_synthetic.sh 96`.)
+* `run_real.sh [NUM_REPETITIONS]` to run the real data experiments. (In the paper we ran `run_real.sh 24`.)

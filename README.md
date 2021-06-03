@@ -1,7 +1,7 @@
 Requirements
 ------------
-* CMake, unzip, C++ compiler (e.g., `sudo apt install cmake unzip build-essential`)
-* Python 3.7 or later with the following libraries: `numpy`, `scipy`, `matplotlib`, `pandas`, `pytest`
+* CMake 3.9 or later, C++ compiler with OpenMP support
+* Python 3.7 or later with the following libraries: `numpy`, `scipy`, `matplotlib`, `pandas`
 
 Install
 -------

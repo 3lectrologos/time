@@ -103,7 +103,10 @@ Result = collections.namedtuple('Result', ['data', 'ndep', 'truetheta', 'theta',
 
 
 def recover(ftheta, nreps):
-    omp_threads = os.environ['OMP_NUM_THREADS']
+    try:
+        omp_threads = os.environ['OMP_NUM_THREADS']
+    except KeyError:
+        omp_threads = None
     os.environ['OMP_NUM_THREADS'] = '1'
     try:
         sizes = [0, 5, 10, 15, 20, 25, 30, 35, 40]
@@ -118,7 +121,8 @@ def recover(ftheta, nreps):
         with open(f'{OUT_DIR}/result_{ftheta.__name__}.pcl', 'wb') as fout:
             pickle.dump((sizes, nreps, res), fout)
     finally:
-        os.environ['OMP_NUM_THREADS'] = omp_threads
+        if omp_threads is not None:
+            os.environ['OMP_NUM_THREADS'] = omp_threads
 
 
 def plot(ftheta):

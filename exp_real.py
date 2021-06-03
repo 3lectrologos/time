@@ -50,13 +50,17 @@ def run_one(genes, size, nreps):
 
 
 def run(genes, sizes, nreps):
-    omp_threads = os.environ['OMP_NUM_THREADS']
+    try:
+        omp_threads = os.environ['OMP_NUM_THREADS']
+    except KeyError:
+        omp_threads = None
     os.environ['OMP_NUM_THREADS'] = '1'
     try:
         for size in sizes:
             run_one(genes, size, nreps)
     finally:
-        os.environ['OMP_NUM_THREADS'] = omp_threads
+        if omp_threads is not None:
+            os.environ['OMP_NUM_THREADS'] = omp_threads
 
 
 def run_all(nreps):

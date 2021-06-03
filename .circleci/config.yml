@@ -2,7 +2,7 @@ version: 2.1
 jobs:
   setup_and_test:
     macos:
-      xcode: 11.3.0
+      xcode: 11.2.0
     # docker:
     #   - image: circleci/python:3.8.5
     steps:

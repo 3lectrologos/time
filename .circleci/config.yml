@@ -1,14 +1,18 @@
 version: 2.1
 jobs:
   setup_and_test:
-    docker:
-      - image: circleci/python:3.8.5
+    macos:
+      - xcode: 11.3.0
+    # docker:
+    #   - image: circleci/python:3.8.5
     steps:
       - checkout
       - run:
           name: Get CMake and miniconda
           command: |
-            sudo apt install cmake
+            # sudo apt install cmake
+            brew install cmake
+            brew install libomp
             wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh
             bash miniconda.sh -b -p ./miniconda
             source "./miniconda/etc/profile.d/conda.sh"

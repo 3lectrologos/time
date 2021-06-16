@@ -48,7 +48,17 @@ def combine_genes(data, comb):
     return newdata
 
 
-def get_mut_cna(type, mutonly=False):
+def get_subtype(type, subtype):
+    fsub = f'{TCGA_DIR}/tcga_{type}_subtypes.txt'
+    sub = pd.read_csv(fsub, sep='\t')
+    ids_subs = list(zip(list(sub.iloc[:, 0]), list(sub.iloc[:, 4])))
+    if isinstance(subtype, str):
+        subtype = [subtype]
+    ids = [id for id, st in ids_subs if st in subtype]
+    return ids
+
+
+def get_mut_cna(type, mutonly=False, subtype=None):
     fmut = f'{TCGA_DIR}/tcga_{type}_mut.txt'
     mut = pd.read_csv(fmut, sep='\t', skiprows=1)
     genes_mut = mut.iloc[:, 0].to_list()
@@ -76,6 +86,16 @@ def get_mut_cna(type, mutonly=False):
     else:
         mat = mat_mut
         genes = genes_mut
+
+    if subtype is not None:
+        ids_sub = get_subtype(type, subtype)
+        idxs = []
+        for i, id in enumerate(ids_mut):
+            # NOTE: The `:-3` removes the '-01' in sample ids.
+            if id[:-3] in ids_sub:
+                idxs.append(i)
+        mat = mat[:, idxs]
+        
     data = Data([mat], labels=genes)
     data = combine_genes(data, combos)
     return data
@@ -106,11 +126,11 @@ def get_alt(type):
 #    data = tcga('gbm')
 
 
-def tcga(type, alt=False, mutonly=False):
+def tcga(type, alt=False, mutonly=False, subtype=None):
     if alt:
         return get_alt(type)
     else:
-        return get_mut_cna(type, mutonly)
+        return get_mut_cna(type, mutonly, subtype)
 
 
 def bekka():

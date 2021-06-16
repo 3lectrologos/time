@@ -14,7 +14,7 @@ import util
 from cpp import diff
 
 
-DIR_NAME = 'result_gbm'
+DIR_NAME = 'result_coadread_cms2'
 
 
 def desc(genes):
@@ -36,7 +36,7 @@ def plot_real(genes, size):
 
 
 def run_one(genes, size, nreps):
-    data = datasets.tcga('gbm')
+    data = datasets.tcga('coadread', subtype=['CMS2'])
     data = util.order_data(data, fixed=genes, extra=size)
     njobs = multiprocessing.cpu_count()
     res = joblib.Parallel(n_jobs=njobs)(
@@ -65,15 +65,19 @@ def run(genes, sizes, nreps):
 
 def run_all(nreps):
     gene_pairs = (
-        ['EGFR(A)', 'EGFR'],
-        ['PDGFRA(A)', 'PDGFRA'],
-        ['TP53', 'IDH1'],
-        ['MDM2(A)', 'CDK4(A)']
+        #['EGFR(A)', 'EGFR'],
+        #['PDGFRA(A)', 'PDGFRA'],
+        #['TP53', 'IDH1'],
+        #['MDM2(A)', 'CDK4(A)']
+        ['APC', 'TP53'],
+        ['KRAS', 'PIK3CA'],
+        ['TP53', 'KRAS'],
+        ['APC', 'KRAS']
     )
-    pair_sizes = [0, 5, 10, 20, 30]
+    pair_sizes = [0]
     for pair in gene_pairs:
         run(pair, pair_sizes, nreps)
-    other_sizes = [50, 70, 100, 150, 200]
+    other_sizes = [100]
     run([], other_sizes, nreps)
 
 
